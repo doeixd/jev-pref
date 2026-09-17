@@ -83,7 +83,8 @@ function worstOf(verdicts) {
   return "approve";
 }
 
-function renderVerdict(suiteVerdicts, scope = "") {
+// Exported for unit tests (pure rendering, no IO).
+export function renderVerdict(suiteVerdicts, scope = "") {
   const worst = worstOf(suiteVerdicts);
   const tag = scope ? `[${scope}] ` : "";
   const lines = [];
@@ -380,7 +381,7 @@ export async function review(argv, { cwd = ".", out = console } = {}) {
     payload = { outcome: overall, suites: scopeResults[0].suiteVerdicts, files: [] };
   } else {
     const blocks = scopeResults.map((s) => renderVerdict(s.suiteVerdicts, s.label));
-    text = `${overall} (${scopeResults.length} hunks)${hunkFallbackNote ? ` ${hunkFallbackNote}` : ""}\n${blocks.map((b) => b.text).join("\n")}`;
+    text = `${overall} (${scopeResults.length} hunks)${hunkFallbackNote ? ` ${hunkFallbackNote}` : ""}\n${blocks.join("\n")}`;
     payload = {
       outcome: overall,
       hunks: scopeResults.map((s) => ({ label: s.label, file: s.file, start: s.start, count: s.count, outcome: s.outcome, suites: s.suiteVerdicts })),
