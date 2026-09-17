@@ -34,7 +34,7 @@ inputs:
     description: Newline/CSV glob filter — skip files matching these
     default: ""
   engine:
-    description: Engine command (npx spec or local path to bin/jev-pref.js)
+    description: Engine package spec (e.g. jev-pref@0.1.0, run via npx) or local path to bin/jev-pref.js
     default: ""
   engine-version:
     description: jev-pref version when engine is npx (default latest)

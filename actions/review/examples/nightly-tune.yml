@@ -19,8 +19,9 @@ jobs:
         id: tune
         env:
           TYPESAFE_API_KEY: ${{ secrets.TYPESAFE_API_KEY }}
+        # Default evals dir is ./evals — adjust --evals-dir if yours lives elsewhere.
         run: |
-          npx jev-pref@latest tune --sweep --evals-dir packages/jev-pref/evals | tee tune.txt
+          npx jev-pref@latest tune --sweep | tee tune.txt
           echo "report<<EOF" >> "$GITHUB_OUTPUT"
           cat tune.txt >> "$GITHUB_OUTPUT"
           echo "EOF" >> "$GITHUB_OUTPUT"

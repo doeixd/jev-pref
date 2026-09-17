@@ -42,7 +42,9 @@ Exit codes: `0` approve/ok, `1` gate violated, `2` infra/config/usage error
 
 CLI flags > `JEV_*` env vars > `jev-pref.json` > fenced ` ```jev-prefs ` block
 in `CLAUDE.md`/`AGENTS.md` > built-ins. See `schema.json` for the full shape.
-Unknown keys are dropped (typo safety) — `doctor --verbose` lists them.
+File discovery walks up to the git root, so running in a subdir finds the
+repo's config. Unknown keys are dropped (typo safety) — `doctor --verbose`
+lists them.
 
 | Env | Meaning |
 | --- | --- |
@@ -68,7 +70,8 @@ Both suites batch into a single Jev call (more questions ≈ same latency).
 Add `--hunks` for per-hunk calls instead: each diff hunk (and each new file)
 is judged in isolation with file:line attribution, at the cost of one Jev
 call per hunk (capped by `--max-hunks`, default 10 — overflow falls back to
-whole-diff). Hunk verdicts power true inline PR comments.
+whole-diff). Hunk verdicts carry file:line attribution (surfaced with
+`[file:line]` prefixes in CI comments and the Action's sticky summary).
 
 ## Agent handoff
 

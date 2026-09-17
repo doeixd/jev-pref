@@ -23,7 +23,8 @@ Start from `actions/review/examples/` in this skill's repo — copy, don't inven
   which fails on shallow clones.
 - [ ] Pin the action ref: `@v1` (or a SHA) instead of `@master` once released.
 - [ ] Pin the engine too if reproducibility matters:
-  `engine: npx jev-pref@0.1.0` (input `engine-version`).
+  `engine: jev-pref@0.1.0` (a package spec — the driver prepends `npx`;
+  `engine-version` is only used when `engine` is unset).
 - [ ] Fork policy: default `on-forks: dry-run`. Only use `skip` if even
   dry-run noise is unwanted. Tokens are read-only on fork PRs, so no live
   review or comments are possible there regardless.

@@ -3,8 +3,47 @@
 //   in CLAUDE.md / AGENTS.md > built-in defaults.
 // API keys NEVER come from files: JEV_API_KEY (explicit) else advocaat's own
 // cascade (TYPESAFE_API_KEY → AI_GATEWAY_API_KEY → VERCEL_OIDC_TOKEN).
-import { readFile } from "node:fs/promises";
-import { join } from "node:path";
+import { execFile as execFileCb } from "node:child_process";
+import { readFile, stat } from "node:fs/promises";
+import { dirname, join, resolve } from "node:path";
+import { promisify } from "node:util";
+
+const execFile = promisify(execFileCb);
+
+async function exists(path) {
+  try {
+    await stat(path);
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+/** Repo root for bounded upward search; null outside git (then no traversal). */
+async function gitToplevel(dir) {
+  try {
+    const { stdout } = await execFile("git", ["rev-parse", "--show-toplevel"], {
+      cwd: dir,
+      encoding: "utf8",
+      timeout: 10000,
+    });
+    return stdout.trim();
+  } catch {
+    return null;
+  }
+}
+
+/** rootDir, then ancestors up to (and including) stop. */
+function chainUp(rootDir, stop) {
+  const chain = [rootDir];
+  let dir = rootDir;
+  while (dir !== stop && dir !== dirname(dir)) {
+    dir = dirname(dir);
+    chain.push(dir);
+    if (chain.length > 50) break; // pathological depth guard
+  }
+  return chain;
+}
 
 export const DEFAULTS = {
   suites: ["prefs"],
@@ -85,24 +124,36 @@ export function extractFencedBlock(markdown) {
   }
 }
 
-async function readFencedBlock(rootDir) {
-  for (const name of ["CLAUDE.md", "AGENTS.md"]) {
-    let text;
-    try {
-      text = await readFile(join(rootDir, name), "utf8");
-    } catch {
-      continue; // Missing/unreadable — try the next file.
-    }
-    if (!text.includes("```jev-prefs")) continue; // No block — try next file.
-    // Present-but-broken fails loud (same philosophy as jev-pref.json):
-    // a typo'd block must never silently become defaults.
-    try {
-      return { block: extractFencedBlock(text) ?? {}, file: name };
-    } catch (e) {
-      throw new Error(`${join(rootDir, name)}: ${e.message}`);
+async function readFencedBlock(rootDir, stop) {
+  for (const dir of chainUp(rootDir, stop)) {
+    for (const name of ["CLAUDE.md", "AGENTS.md"]) {
+      let text;
+      try {
+        text = await readFile(join(dir, name), "utf8");
+      } catch {
+        continue; // Missing/unreadable — try the next file.
+      }
+      if (!text.includes("```jev-prefs")) continue; // No block — keep looking.
+      // Present-but-broken fails loud (same philosophy as jev-pref.json):
+      // a typo'd block must never silently become defaults.
+      try {
+        const block = extractFencedBlock(text) ?? {};
+        return { block, file: join(dir, name) };
+      } catch (e) {
+        throw new Error(`${join(dir, name)}: ${e.message}`);
+      }
     }
   }
   return { block: {}, file: null };
+}
+
+/** Nearest jev-pref.json at/below stop; null when none (defaults apply). */
+async function findConfigFile(rootDir, stop) {
+  for (const dir of chainUp(rootDir, stop)) {
+    const candidate = join(dir, "jev-pref.json");
+    if (await exists(candidate)) return candidate;
+  }
+  return null;
 }
 
 function pick(obj, keys) {
@@ -126,21 +177,36 @@ const KNOWN_KEYS = Object.keys(DEFAULTS);
  */
 export async function resolveConfig({ rootDir = ".", flags = {} } = {}) {
   const env = readEnv();
-  const configPath = flags.config ?? env.configPath ?? join(rootDir, "jev-pref.json");
-  const isDefaultPath = configPath === join(rootDir, "jev-pref.json") && flags.config === undefined && env.configPath === undefined;
+  const absRoot = resolve(rootDir);
+  // Config discovery walks up to the git root (subdir-safe: running in
+  // packages/app finds the repo's jev-pref.json). Outside git, root only.
+  const top = (await gitToplevel(absRoot)) ?? absRoot;
+  const explicit = flags.config ?? env.configPath;
+  let configPath;
   let json = {};
-  // A missing default config is fine (fenced block / flags may supply prefs);
-  // a present-but-broken one must fail loud.
-  const loaded = await readJsonFile(configPath);
-  if (loaded.found) {
+  if (explicit !== undefined) {
+    configPath = explicit;
+    const loaded = await readJsonFile(configPath);
+    if (!loaded.found) throw new Error(`config not found: ${configPath}`);
     if (loaded.value === null || typeof loaded.value !== "object" || Array.isArray(loaded.value)) {
       throw new Error(`invalid JSON in ${configPath}: top level must be an object`);
     }
     json = loaded.value;
-  } else if (!isDefaultPath) {
-    throw new Error(`config not found: ${configPath}`);
+  } else {
+    // A missing default config is fine (fenced block / flags may supply
+    // prefs); a present-but-broken one must fail loud.
+    const found = await findConfigFile(absRoot, top);
+    configPath = found ?? join(absRoot, "jev-pref.json");
+    if (found) {
+      const loaded = await readJsonFile(found);
+      if (!loaded.found) throw new Error(`config not found: ${found}`);
+      if (loaded.value === null || typeof loaded.value !== "object" || Array.isArray(loaded.value)) {
+        throw new Error(`invalid JSON in ${found}: top level must be an object`);
+      }
+      json = loaded.value;
+    }
   }
-  const { block: fenced, file: fencedFile } = await readFencedBlock(rootDir);
+  const { block: fenced, file: fencedFile } = await readFencedBlock(absRoot, top);
 
   const layers = [
     { name: "defaults", values: DEFAULTS },

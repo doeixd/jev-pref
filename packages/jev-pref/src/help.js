@@ -44,7 +44,8 @@ Agent handoff (verdict piped to your command, argv only — never a shell):
   --agent-timeout-ms MS    handoff timeout (default 300000).
 
 Client:
-  --config PATH     config file (default ./jev-pref.json). JEV_CONFIG also.
+  --config PATH     config file (default ./jev-pref.json, walking up to the
+                    git root). JEV_CONFIG also.
   --model M --base-url U --provider typesafe|vercel --timeout-ms MS
   --max-diff-chars N       diff budget before truncation note (default 24000).
 
@@ -88,7 +89,8 @@ Usage: jev-pref tune [--sweep] [--check[=N]] [--evals-dir DIR] [--dry-run]
   --check           fail (exit 1) if accuracy @ gateThreshold is below the bar
                     (0.5 bare; --check=0.8 to set it). For CI gates.
   --dry-run         list runnable cases without calling Jev (free).
-  --config PATH     config file (default ./jev-pref.json).
+  --config PATH     config file (default ./jev-pref.json, walking up to the
+                    git root).
 
 Needs a live key (same cascade as review). Exit codes: 0 ok, 1 --check
 below bar, 2 config/infra/usage error.

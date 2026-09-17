@@ -7,10 +7,14 @@ outcome-driven check status. Needs checkout with `fetch-depth: 0`.
 - uses: actions/checkout@v4
   with:
     fetch-depth: 0
-- uses: doeixd/jev-pref/actions/review@v1
+- uses: doeixd/jev-pref/actions/review@master
   with:
     api-key: ${{ secrets.TYPESAFE_API_KEY }}
 ```
+
+> Requires the published `jev-pref` npm package (default `engine-version:
+> latest`). Pre-release, point `engine:` at a local checkout instead:
+> `engine: ./packages/jev-pref/bin/jev-pref.js`.
 
 ## Inputs
 
@@ -24,7 +28,7 @@ outcome-driven check status. Needs checkout with `fetch-depth: 0`.
 | `working-directory` | `.` | Directory to review |
 | `base` | _(PR base)_ | Base ref override for the diff |
 | `paths`, `paths-ignore` | _(all)_ | Glob filters on changed files (`**`, `*`, `?`); skips silently when nothing matches |
-| `engine` | _(npx)_ | `npx jev-pref@<engine-version>` by default; use `./path/to/jev-pref.js` for local/monorepo pins |
+| `engine` | _(npx)_ | Package spec (`jev-pref@0.1.0`, run via npx) or `./path/to/jev-pref.js` for local/monorepo pins |
 | `engine-version` | `latest` | Version when engine is npx |
 | `on-forks` | `dry-run` | Fork PRs without secrets: `dry-run` (shape validation, no comment) or `skip` |
 | `api-key` | _(env)_ | Key (prefer the `TYPESAFE_API_KEY` secret); ambient env also works |

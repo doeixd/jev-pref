@@ -101,4 +101,34 @@ describe("resolveConfig", () => {
       await rm(dir, { recursive: true, force: true });
     }
   });
+
+  it("walks up to the git root for configs and fenced blocks", async () => {
+    const { execFile } = await import("node:child_process");
+    const { promisify } = await import("node:util");
+    const git = promisify(execFile);
+    const dir = await mkdtemp(join(tmpdir(), "jev-cfg-"));
+    try {
+      await git("git", ["init"], { cwd: dir });
+      await writeFile(join(dir, "jev-pref.json"), JSON.stringify({ gateThreshold: 0.55, prefs: goodPrefs }));
+      const { mkdir } = await import("node:fs/promises");
+      const sub = join(dir, "packages", "app");
+      await mkdir(sub, { recursive: true });
+      const { config, configPath } = await resolveConfig({ rootDir: sub, flags: {} });
+      assert.equal(config.gateThreshold, 0.55); // found by walking up
+      assert.equal(configPath, join(dir, "jev-pref.json"));
+    } finally {
+      await rm(dir, { recursive: true, force: true });
+    }
+  });
+
+  it("stays root-local outside git", async () => {
+    const dir = await mkdtemp(join(tmpdir(), "jev-cfg-"));
+    try {
+      const { config, sources } = await resolveConfig({ rootDir: dir, flags: {} });
+      assert.equal(sources.gateThreshold, "defaults");
+      assert.deepEqual(config.suites, ["prefs"]);
+    } finally {
+      await rm(dir, { recursive: true, force: true });
+    }
+  });
 });
