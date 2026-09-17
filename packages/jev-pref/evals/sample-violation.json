@@ -1,0 +1,5 @@
+{
+  "name": "adds any",
+  "diff": "--- a/api.ts\n+++ b/api.ts\n@@\n-function get(id: string) {\n+function get(id: any) {\n   return db.load(id);\n }",
+  "expected": { "no_any": true, "early_returns": false }
+}

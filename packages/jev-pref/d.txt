@@ -1,0 +1,5 @@
+ok   node >= 20 ΓÇö 26.5.0
+ok   git available
+ok   gh cli available (for --pr)
+FAIL api key (JEV_API_KEY|TYPESAFE_API_KEY|AI_GATEWAY_API_KEY|VERCEL_OIDC_TOKEN) ΓÇö none set
+ok   config valid

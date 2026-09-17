@@ -1,0 +1,21 @@
+{
+  "name": "jev-pref",
+  "version": "0.1.0",
+  "description": "Jev-powered user-preference code reviewer: init, review, tune, doctor",
+  "type": "module",
+  "bin": {
+    "jev-pref": "./bin/jev-pref.js"
+  },
+  "dependencies": {
+    "advocaat": "0.0.2"
+  },
+  "engines": {
+    "node": ">=20"
+  },
+  "files": [
+    "bin/",
+    "src/",
+    "README.md"
+  ],
+  "license": "MIT"
+}

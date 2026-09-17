@@ -1,0 +1,31 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "jev-pref config",
+  "type": "object",
+  "properties": {
+    "suites": { "type": "array", "items": { "type": "string" }, "default": ["prefs"] },
+    "gateThreshold": { "type": "number", "minimum": 0, "maximum": 1, "default": 0.7 },
+    "advisoryThreshold": { "type": "number", "minimum": 0, "maximum": 1, "default": 0.7 },
+    "severityFail": { "type": "number", "minimum": 0, "default": 1.5 },
+    "failOn": { "type": "string", "enum": ["gates", "all", "never"], "default": "gates" },
+    "timeoutMs": { "type": "integer", "minimum": 1, "default": 60000 },
+    "maxDiffChars": { "type": "integer", "minimum": 1, "default": 24000 },
+    "model": { "type": "string" },
+    "baseUrl": { "type": "string" },
+    "provider": { "type": "string", "enum": ["typesafe", "vercel"] },
+    "zeroDataRetention": { "type": "boolean", "default": false },
+    "prefs": {
+      "type": "array",
+      "default": [],
+      "items": {
+        "type": "object",
+        "required": ["id", "gate", "text"],
+        "properties": {
+          "id": { "type": "string", "pattern": "^[a-z0-9]+(_[a-z0-9]+)*$" },
+          "gate": { "type": "boolean" },
+          "text": { "type": "string", "minLength": 1 }
+        }
+      }
+    }
+  }
+}

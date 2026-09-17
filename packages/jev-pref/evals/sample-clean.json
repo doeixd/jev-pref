@@ -1,0 +1,5 @@
+{
+  "name": "clean refactor",
+  "diff": "--- a/util.ts\n+++ b/util.ts\n@@\n-function f(x) {\n-  if (x) {\n-    return g(x);\n-  }\n-  return null;\n+function f(x) {\n+  if (!x) return null;\n+  return g(x);\n+}",
+  "expected": { "no_any": false, "early_returns": false }
+}
