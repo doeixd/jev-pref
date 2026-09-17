@@ -114,6 +114,24 @@ export async function init(argv, { cwd = ".", out = console, input = process.std
   }
 
   const outPath = isAbsolute(answers.outPath) ? answers.outPath : resolve(cwd, answers.outPath);
+  // Never silently wipe an existing prefs array: re-entry runs must merge by
+  // hand (or pass --force). --print writes nothing and is always safe.
+  if (!print && !boolFlag(flags, "force")) {
+    let existingConfig;
+    try {
+      existingConfig = JSON.parse(await readFile(outPath, "utf8"));
+    } catch (e) {
+      if (e instanceof SyntaxError) {
+        out.error(`review-error: ${outPath} has invalid JSON — fix or delete it first (refusing to overwrite)`);
+        return 2;
+      }
+      // Missing/unreadable: fresh write below; writeFile surfaces real IO errors.
+    }
+    if (existingConfig && Array.isArray(existingConfig.prefs) && existingConfig.prefs.length > 0) {
+      out.error(`review-error: ${outPath} already has ${existingConfig.prefs.length} prefs — merge by hand or re-run with --force to overwrite`);
+      return 2;
+    }
+  }
   await writeFile(outPath, JSON.stringify(config, null, 2) + "\n");
   out.log(`wrote ${outPath} — now add your prefs to its "prefs" array (see skill references/prefs-to-questions.md)`);
 

@@ -6,6 +6,7 @@
   "failOn": "gates",
   "prefs": [
     { "id": "no_real_keys", "gate": false, "text": "Docs, comments, and examples must not contain real API keys or tokens." },
-    { "id": "skill_layout", "gate": false, "text": "New skills live under skills/<name>/ with SKILL.md carrying name and description frontmatter." }
+    { "id": "skill_layout", "gate": false, "text": "New skills live under skills/<name>/ with SKILL.md carrying name and description frontmatter." },
+    { "id": "skill_lean", "gate": false, "text": "SKILL.md bodies stay under ~500 lines with details in references/ (validate-skills warns otherwise)." }
   ]
 }

@@ -25,7 +25,8 @@ Follow these steps in order. Do not skip the interview (step 3).
    only the pages relevant to the chosen stack (API contract, SDK usage).
    Live docs win over this skill on version-dependent details.
 3. If the `typesafe-ai` skill (`npx skills add typesafe-ai/skills --skill typesafe-ai`)
-   is available, consult it for SDK patterns.
+   is available, consult it for SDK patterns. If not, skip it — this skill
+   plus the live docs below are sufficient.
 
 ### 2. Locate preferences
 
@@ -52,7 +53,9 @@ thresholds start at 0.7 and `tune` calibrates later.
 ### 4. Configure (don't generate)
 
 1. Run `npx jev-pref init` (or `--yes` with confirmed answers) to write
-   `jev-pref.json` and the ` ```jev-prefs ` fenced block.
+   `jev-pref.json` and the ` ```jev-prefs ` fenced block. If `jev-pref.json`
+   already has prefs, `init` refuses to overwrite it — merge by hand (or pass
+   `--force` to start over).
 2. Fill the `prefs` array: one entry per preference
    (`{ id, gate, text }`, snake_case ids), translating per
    `references/prefs-to-questions.md`. Prefer editing `jev-pref.json`
@@ -75,6 +78,7 @@ for enforcement — the markdown block alone is advisory and agents skip it.
 ### 6. Verify
 
 1. `npx jev-pref review --dry-run` — inspect questions without spending a call.
+   (`tune --dry-run` needs `--evals-dir` when evals don't live in `./evals/`.)
 2. With a key available (`JEV_API_KEY`/`TYPESAFE_API_KEY`/`AI_GATEWAY_API_KEY`),
    run one live check; without a key, leave verification steps for the user.
 3. Report: config location, wired triggers, gates vs. advisory list, how to run,

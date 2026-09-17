@@ -74,6 +74,8 @@ Usage: jev-pref init [--yes] [options]
   --agent-cmd BIN   write an agent handoff block (whitespace-split command).
   --out PATH        config path (default ./jev-pref.json).
   --print           print the fenced block to stdout instead of writing files.
+  --force           overwrite an existing config even if it has prefs
+                    (default: refuse — merge by hand instead).
 
 Exit codes: 0 wrote/printed, 2 bad answers/usage error.
 `;

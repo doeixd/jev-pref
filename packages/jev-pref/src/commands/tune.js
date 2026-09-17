@@ -8,7 +8,6 @@ import { readdir, readFile } from "node:fs/promises";
 import { join } from "node:path";
 import { boolFlag, InvalidArgs, strFlag } from "../args.js";
 import { resolveApiKey, resolveConfig, validateConfig } from "../config.js";
-import { evaluate } from "../jev.js";
 import { buildQuestions } from "../suites/prefs.js";
 
 const SWEEP = [0.5, 0.6, 0.7, 0.8, 0.9];
@@ -90,6 +89,9 @@ export async function tune(argv, { cwd = ".", out = console } = {}) {
 
   const questions = buildQuestions(config.prefs);
   const client = { apiKey: resolveApiKey() };
+  // Lazy client: --dry-run above already returned, so keyless previews never
+  // require advocaat to be installed.
+  const { evaluate } = await import("../jev.js");
   const state = (c) => ({ prefs: config.prefs.map((p) => `${p.id}: ${p.text}`), diff: c.diff });
   const probs = {}; // file -> { prefId -> P }
   for (const c of cases) {

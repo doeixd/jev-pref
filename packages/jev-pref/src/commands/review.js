@@ -9,7 +9,6 @@ import { runAgent, AgentError } from "../agent.js";
 import { resolveApiKey, resolveConfig, validateConfig } from "../config.js";
 import { collectState, GitError, UnsafeRefError } from "../git.js";
 import { hunkLabel, splitHunks } from "../hunks.js";
-import { evaluate, JevError, JevOverloadedError } from "../jev.js";
 import * as prefsSuite from "../suites/prefs.js";
 import * as secretsSuite from "../suites/secrets.js";
 
@@ -356,7 +355,9 @@ export async function review(argv, { cwd = ".", out = console } = {}) {
     return 0;
   }
 
-  // One Jev call per scope, sequential (rate-limit friendly).
+  // One Jev call per scope, sequential (rate-limit friendly). The client
+  // loads lazily so --dry-run works with zero dependencies installed.
+  const { evaluate, JevError, JevOverloadedError } = await import("../jev.js");
   const scopeResults = [];
   try {
     for (const scope of scopes) {

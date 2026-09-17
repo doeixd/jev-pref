@@ -5,10 +5,6 @@ import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { boolFlag, InvalidArgs, parseArgs } from "./args.js";
 import { commandHelp } from "./help.js";
-import { doctor } from "./commands/doctor.js";
-import { init } from "./commands/init.js";
-import { review } from "./commands/review.js";
-import { tune } from "./commands/tune.js";
 
 function packageVersion() {
   try {
@@ -52,7 +48,7 @@ const KNOWN_FLAGS = {
   ]),
   init: new Set([
     "yes", "y", "stack", "scope", "suites", "trigger", "wire", "hunks",
-    "agent-cmd", "out", "print", "help", "h",
+    "agent-cmd", "out", "print", "force", "help", "h",
   ]),
   tune: new Set(["sweep", "check", "evals-dir", "dry-run", "config", "help", "h"]),
   doctor: new Set(["verbose", "v", "config", "help", "h"]),
@@ -128,16 +124,18 @@ export async function run(argv, { cwd = process.cwd(), out = console } = {}) {
   }
   if (!rejectUnknownFlags(cmd, parsed.flags, out)) return 2;
   const ctx = { cwd, out };
+  // Commands load lazily so --help, doctor, and dry-run flows never require
+  // the live Jev client (advocaat) to be installed.
   try {
     switch (cmd) {
       case "review":
-        return await review(parsed, ctx);
+        return await (await import("./commands/review.js")).review(parsed, ctx);
       case "doctor":
-        return await doctor(parsed, ctx);
+        return await (await import("./commands/doctor.js")).doctor(parsed, ctx);
       case "init":
-        return await init(parsed, ctx);
+        return await (await import("./commands/init.js")).init(parsed, ctx);
       case "tune":
-        return await tune(parsed, ctx);
+        return await (await import("./commands/tune.js")).tune(parsed, ctx);
       default:
         out.error(`review-error: unknown command ${JSON.stringify(cmd)} (see: jev-pref help)`);
         return 2;

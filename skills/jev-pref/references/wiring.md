@@ -6,7 +6,11 @@ All triggers invoke the same binary with the same exit contract
 
 ## Agent instruction file
 
-Append, adapting bracketed parts to the interview answers:
+Append, adapting bracketed parts to the interview answers. Keep the fenced
+config and the run instruction together: `init` writes both as one block —
+the fence is the machine config, the run block is the human instruction.
+On conflict `jev-pref.json` wins, so re-run `init --print` (or hand-edit)
+rather than letting a stale fence mislead.
 
 ```markdown
 ## Preference review (Jev)
@@ -32,6 +36,8 @@ npx jev-pref review --staged || exit 1
 ```
 
 Pin a version in shared setups: `npx jev-pref@0.1.0 review --staged`.
+Pre-publish (or for a monorepo pin), call the local binary instead:
+`node ./packages/jev-pref/bin/jev-pref.js review --staged`.
 
 Scope notes: `--staged` / `--diff` / `--pr` judge exactly that scope —
 untracked files are included only in default working-tree reviews. Use

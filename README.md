@@ -1,8 +1,37 @@
 # jev-pref
 
+Turn your `CLAUDE.md` / `AGENTS.md` preferences into a reviewer that actually
+runs: [Jev](https://docs.typesafe.ai) (TypeSafe's evaluation model) judges
+every diff against your prefs — gates fail the build, advisories note nits,
+secrets never slip through. One setup, enforced everywhere: agent sessions,
+git hooks, and PR checks all call the same binary with the same exit contract
+(`0` approve, `1` gate violated, `2` setup error — never treat 2 as approval).
+
 Agent skills installable with [skills.sh](https://skills.sh) via the [`skills` CLI](https://github.com/vercel-labs/skills).
 
 [![skills.sh](https://skills.sh/b/doeixd/jev-pref)](https://skills.sh/doeixd/jev-pref)
+
+## Quickstart (60 seconds)
+
+```bash
+# 1. Sanity check (node >= 20, git, keys, config)
+npx jev-pref doctor
+
+# 2. Interview-to-config: writes jev-pref.json + wires the run instruction
+#    into CLAUDE.md / AGENTS.md
+npx jev-pref init
+
+# 3. Add your prefs, then review (free preview first, live after)
+npx jev-pref review --dry-run
+npx jev-pref review --staged     # pre-commit  ·  --pr for PRs  ·  --hunks for per-hunk verdicts
+
+# 4. Calibrate later against real verdicts
+npx jev-pref tune --sweep
+```
+
+Keys are env-only (`JEV_API_KEY`, else `TYPESAFE_API_KEY` →
+`AI_GATEWAY_API_KEY` → `VERCEL_OIDC_TOKEN`) — never committed. Full command
+reference is in the [engine README](./packages/jev-pref/).
 
 ## Install
 
@@ -42,15 +71,34 @@ npx skills use ./jev-pref --skill jev-pref | claude
 ## Engine (`npx jev-pref`)
 
 The [`jev-pref` npm package](./packages/jev-pref/) implements the reviewer:
-`review` / `init` / `tune` / `doctor` (see its README). The skill teaches setup;
+`review` / `init` / `tune` / `doctor` (see its README for flags, config
+precedence, per-hunk review, and agent handoff). The skill teaches setup;
 the engine does the work — update logic once, every installation improves.
+
+Prefer piping? `git diff HEAD~1 | npx jev-pref review --diff -` reviews any
+diff with no repo required; `--json` keeps stdout machine-readable for
+composition with other tools.
 
 ## GitHub Action
 
-[`actions/review`](./actions/review/) reviews PRs: sticky summary comment,
-file annotations, outcome-driven check status (`examples/` has strict,
-advisory, and nightly-tune workflows). This repo dogfoods it on PRs to master
-(see `.github/workflows/jev-review.yml`) with the root `jev-pref.json`.
+[`actions/review`](./actions/review/) reviews PRs: sticky summary comment
+with `[file:line]` attribution, file annotations, outcome-driven check status
+(`examples/` has strict, advisory, and nightly-tune workflows). Start new
+repos on advisory (`fail-on: never`), go strict once `tune` confirms.
+This repo dogfoods it on PRs to master (see
+`.github/workflows/jev-review.yml`) with the root `jev-pref.json`.
+
+## Development
+
+```bash
+node scripts/validate-skills.mjs   # skill frontmatter + layout
+npm test --prefix packages/jev-pref  # engine unit suites (node:test)
+node packages/jev-pref/bin/jev-pref.js doctor  # env sanity (needs no key to run)
+```
+
+CI (`.github/workflows/validate.yml`) runs all three plus `tune --dry-run`
+on every push/PR. Live engine checks need a key (`TYPESAFE_API_KEY` in env
+locally, repo secret in CI) — dry-runs are always free.
 
 ## Repo layout
 
@@ -125,10 +173,13 @@ the script — the script reads `process.env` directly).
 ## Validation
 
 ```bash
-node scripts/validate-skills.mjs
+node scripts/validate-skills.mjs     # skill frontmatter + layout
+npm test --prefix packages/jev-pref  # engine unit suites
 ```
 
-CI (`.github/workflows/validate.yml`) runs the same check on every push/PR.
+See [Development](#development) for the full loop. CI
+(`.github/workflows/validate.yml`) runs these plus `doctor` and
+`tune --dry-run` on every push/PR.
 
 ## skills.sh
 
