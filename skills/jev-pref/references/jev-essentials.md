@@ -59,10 +59,13 @@ packed multi-clause factors, missing `other` (it picks least-bad anyway).
 ## Stack decision tree
 
 - Generated text/code/plan needed → an LLM, not Jev.
-- TS app on Vercel/AI SDK → `experimental_evaluate` (`ai@7.0.105+`), model
-  `"typesafe-ai/jev"`, question types `choice` / `score` / `boolean`.
-- TS direct → `@typesafe-ai/sdk` (`TypeSafeClient.systemOne`, helpers
-  `choice`/`noul`/`score`, else raw `{ type, instructions, criteria }`).
+- New setup, TS on Node → the `jev-pref` engine (`npx jev-pref review`):
+  prefs in `jev-pref.json` or a fenced block, Gateway + direct auth handled.
+- TS app on Vercel/AI SDK needing in-process calls → `experimental_evaluate`
+  (`ai@7.0.105+`), model `"typesafe-ai/jev"`, question types
+  `choice` / `score` / `boolean`.
+- TS direct in-process → `@typesafe-ai/sdk`, or light client `advocaat`
+  (`ask(state, questions)`; handles direct + Gateway + OIDC, typed answers).
 - Effect v4 app → `assets/review-script-effect.ts` (Context.Service Git +
   JevClient, `effect/unstable/cli` flags, Config-based keys, direct
   `TYPESAFE_API_KEY` only). Install `effect@rc` + `@effect/platform-node@rc`.

@@ -1,21 +1,25 @@
-# Setup interview (ask before generating)
+# Setup interview (ask before generating; max 3 questions)
 
-Ask all of these; do not guess. Record answers in the script header.
+Run `npx jev-pref doctor` first and fix what it flags. Then ask:
 
-1. **Script path** — default `scripts/jev-review.mjs`. Confirm or take theirs.
-2. **Stack** — default TypeScript + AI Gateway (`experimental_evaluate`,
-   `AI_GATEWAY_API_KEY`). A TS template is bundled for Gateway and direct
-   (`@typesafe-ai/sdk`, `TYPESAFE_API_KEY`) paths. Effect v4 codebases get the
-   Effect template (`assets/review-script-effect.ts`, direct `TYPESAFE_API_KEY`
-   only). Python `typesafe-sdk` and shell `ai-cli` are supported but
-   hand-authored (no bundled template). Pick one.
-3. **Review scope** — which diffs: working tree (default), staged only, commit
-   range (`HEAD~n...HEAD`), PR vs base (`--diff origin/main...HEAD`)? Support
-   `--diff` flag accordingly (the template already accepts refs and `A...B` ranges).
-4. **Prefs classification** — for each extracted pref: hard gate (fails the run)
-   or advisory (notes only)? Default threshold 0.7; ask if they want stricter.
-5. **Run trigger** — when must the agent run it: after each task, before every
-   commit, on PRs, other? Get their exact wording for the CLAUDE.md entry.
-6. **Wire target** — `CLAUDE.md`, `AGENTS.md`, or both? Create the file if missing.
-7. **Keys** — confirm `AI_GATEWAY_API_KEY` or `TYPESAFE_API_KEY` is set in env;
-   never write keys into files.
+1. **Suites** — `prefs` (their preferences) plus built-in `secrets` gate?
+   Default/recommendation: both.
+2. **Run trigger** — when must review run: after each task, before every
+   commit (`--staged`), on PRs (`--pr`), other? Get their exact wording for
+   the wired entry.
+3. **Wire target** — `CLAUDE.md`, `AGENTS.md`, git hooks, agent hooks, CI, or
+   several? Create agent files if missing; see `references/wiring.md`.
+
+State defaults and assumptions; do not interrogate beyond this. Thresholds
+start at 0.7 — `npx jev-pref tune` calibrates later against real verdicts.
+
+Record answers with `npx jev-pref init` (interactive) or
+`npx jev-pref init --yes --suites prefs,secrets --trigger "..." --wire both`.
+
+Stacks: the engine covers TypeScript Gateway + direct paths. Effect v4
+codebases get `assets/review-script-effect.ts` (direct key only). Python /
+`ai-cli` are hand-authored. Only ask about stack if the project clearly is
+not TS-on-Node — otherwise assume the engine.
+
+Keys: confirm `JEV_API_KEY`, `TYPESAFE_API_KEY`, or `AI_GATEWAY_API_KEY` is
+set in env; never write keys into files.

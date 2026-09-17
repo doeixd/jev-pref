@@ -37,7 +37,13 @@ npx skills use ./jev-pref --skill jev-pref | claude
 
 | Skill | Description |
 | ----- | ----------- |
-| [jev-pref](./skills/jev-pref/SKILL.md) | Set up Jev as a durable user-preference code reviewer (script + CLAUDE.md wiring). |
+| [jev-pref](./skills/jev-pref/SKILL.md) | Set up Jev as a durable user-preference code reviewer via the `jev-pref` engine. |
+
+## Engine (`npx jev-pref`)
+
+The [`jev-pref` npm package](./packages/jev-pref/) implements the reviewer:
+`review` / `init` / `tune` / `doctor` (see its README). The skill teaches setup;
+the engine does the work — update logic once, every installation improves.
 
 ## Repo layout
 
@@ -54,8 +60,10 @@ jev-pref/
 ├── skills/                    # <-- installable skills live here
 │   └── jev-pref/
 │       ├── SKILL.md           # required: name + description + instructions
-│       ├── references/        # jev-essentials, prefs-to-questions, interview, wiring
+│       ├── references/        # jev-essentials, prefs-to-questions, interview, wiring, effect-stack
 │       └── assets/            # review-script-template.mjs + effect.ts + CLAUDE.md snippet
+├── packages/
+│   └── jev-pref/              # <-- npm engine: npx jev-pref review|init|tune|doctor
 ├── templates/
 │   └── skill-template/        # starter copy-paste template (not installed)
 │       └── SKILL.md
