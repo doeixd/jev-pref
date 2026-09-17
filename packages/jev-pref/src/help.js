@@ -63,6 +63,11 @@ const INIT = `jev-pref init — interview-to-config writer for the skill's setup
 
 Usage: jev-pref init [--yes] [options]
 
+  Interactive (a terminal): guided wizard — every question explains itself,
+  bad enums re-ask, then a preview asks to proceed before anything is written.
+  Piped (init < answers.txt): one answer per line, wizard order; flags
+  (--wire, --out, --hunks, --agent-cmd) skip their questions. Truncated
+  input fails fast instead of hanging.
   --yes             non-interactive defaults (for CI / confirmed answers).
   --stack S         gateway|direct|effect|python|cli (default gateway).
   --scope S         working-tree|staged|pr (controls the wired review command).

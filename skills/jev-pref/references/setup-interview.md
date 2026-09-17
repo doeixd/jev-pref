@@ -19,9 +19,9 @@ Run `npx jev-pref doctor` first and fix what it flags. Then ask:
 State defaults and assumptions; do not interrogate beyond this. Thresholds
 start at 0.7 — `npx jev-pref tune` calibrates later against real verdicts.
 
-Record answers with `npx jev-pref init` (interactive) or
-`npx jev-pref init --yes --suites prefs,secrets --trigger "..." --wire both`
-(plus `--scope staged|pr`, `--hunks`, `--agent-cmd "..."` as answered).
+Record answers with `npx jev-pref init` (interactive: explains, validates,
+previews, confirms) or non-interactively via `init --yes ...` flags or
+`init < answers.txt` (one answer per line, wizard order).
 
 Stacks: the engine covers TypeScript Gateway + direct paths. Effect v4
 codebases get `assets/review-script-effect.ts` (direct key only). Python /

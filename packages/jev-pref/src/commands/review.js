@@ -14,7 +14,7 @@ import * as secretsSuite from "../suites/secrets.js";
 
 const execFile = promisify(execFileCb);
 
-const SUITES = { prefs: prefsSuite, secrets: secretsSuite };
+export const SUITES = { prefs: prefsSuite, secrets: secretsSuite };
 
 async function prBase(cwd) {
   // `gh pr view` → base ref for --pr without the user knowing git.
@@ -66,8 +66,7 @@ function suiteQuestions(config) {
   return questions;
 }
 
-function judgeSuites(config, answers) {
-  return config.suites.map((suiteId) => {
+function judgeSuites(config, answers) {  return config.suites.map((suiteId) => {
     const suite = SUITES[suiteId];
     const v = suiteId === "prefs"
       ? suite.judge(config.prefs, answers, config)
