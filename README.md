@@ -23,8 +23,8 @@ npx skills add doeixd/jev-pref --all
 For local testing:
 
 ```bash
-npx skills add ./jev-pref --list
-npx skills add ./jev-pref --skill jev-pref
+npx skills add ./ --list
+npx skills add ./ --skill jev-pref
 ```
 
 Test a skill without installing:
@@ -50,6 +50,7 @@ Each skill is a directory with at minimum a `SKILL.md` containing `name` and
 jev-pref/
 ├── README.md
 ├── LICENSE
+├── .env.example             # key names for local runs (never commit .env)
 ├── skills/                    # <-- installable skills live here
 │   └── jev-pref/
 │       ├── SKILL.md           # required: name + description + instructions

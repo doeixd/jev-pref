@@ -49,7 +49,11 @@ Ask before generating. Cover every item in `references/setup-interview.md`:
 
 ### 4. Generate the review script
 
-1. Copy `assets/review-script-template.mjs` to the agreed path.
+1. If the stack is TypeScript + Gateway or direct SDK: copy
+   `assets/review-script-template.mjs` to the agreed path. If the user chose
+   Python or `ai-cli`: no template is bundled — hand-author the equivalent
+   (one boolean per pref, one severity Score, one `next` Choice, thresholds in
+   code) using `references/jev-essentials.md` for the API shape.
 2. Translate each preference into **one narrow Jev question** per
    `references/prefs-to-questions.md` (one boolean/Noul per pref — Gateway calls
    it `boolean`, native calls it `noul`, same semantics — plus one severity Score
@@ -66,7 +70,9 @@ Ask before generating. Cover every item in `references/setup-interview.md`:
 
 Append the snippet from `assets/claude-md-snippet.md` (adapted) to the file(s)
 the user chose, per `references/wiring.md`. State exactly when to run the
-script and how to act on pass / advisory / gate-failure.
+script and how to act on pass / advisory / gate-failure. If the harness
+supports hooks (e.g. Claude Code `PostToolUse`), prefer those for enforcement —
+the markdown block alone is advisory and agents routinely skip it.
 
 ### 6. Verify
 
@@ -80,7 +86,8 @@ script and how to act on pass / advisory / gate-failure.
 ## Rules
 
 - One judgment per question. Split multi-factor prefs; combine in code.
-- `state` is a named object (`{ diff, prefs, context }`), not a pasted transcript.
+- `state` is a named object (`prefs`, `diff`, `untracked_files`, `git_status`,
+  `context`), not a pasted transcript.
 - Schema-valid answers are not correctness — calibrate thresholds on real diffs.
 - Never store API keys in the script. Env only.
 - Keep this SKILL.md lean; load a reference file only when its step is active.

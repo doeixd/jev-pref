@@ -21,5 +21,8 @@ Rules:
 
 - Reference the script by its real relative path, not a placeholder.
 - State the trigger in the user's own words from the interview.
+- A markdown instruction is advisory — agents skip it under pressure. If the
+  harness supports enforcement hooks (e.g. Claude Code `PostToolUse` on edit/commit
+  commands), set those up too and keep the markdown block as the human-readable record.
 - If both `CLAUDE.md` and `AGENTS.md` exist, ask which is canonical; mirror a
   one-line pointer in the other rather than duplicating the block.

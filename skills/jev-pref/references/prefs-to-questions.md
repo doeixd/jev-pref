@@ -7,7 +7,7 @@ script can report which pref failed.
 
 ```text
 Raw pref: "Use early returns; avoid deep nesting."
-→ PREF-01: "Code uses early returns instead of deep nesting."
+→ pref_early_returns: "Code uses early returns instead of deep nesting."
 ```
 
 Drop non-reviewable prefs (e.g. "be concise in chat") from the Jev set; enforce
@@ -61,5 +61,10 @@ else: exit 0 approve
 exit 2 = infra/config error (never treat as approval)
 ```
 
-Calibrate thresholds on 5–10 labeled diffs from the repo. Record the chosen
-values in the script header comment.
+Precedence: the code order above wins. Jev's `next` choice is advisory input,
+not the verdict — if per-pref gates fail but `next` says `approve`, the run
+still fails. Never let `next` override a gate.
+
+Calibrate thresholds on 5–10 labeled diffs from the repo (keep them in
+`evals/`: the diff plus the expected verdict, re-checked with `--dry-run`).
+Record the chosen values in the script header comment.
