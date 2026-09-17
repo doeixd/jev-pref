@@ -45,6 +45,13 @@ The [`jev-pref` npm package](./packages/jev-pref/) implements the reviewer:
 `review` / `init` / `tune` / `doctor` (see its README). The skill teaches setup;
 the engine does the work — update logic once, every installation improves.
 
+## GitHub Action
+
+[`actions/review`](./actions/review/) reviews PRs: sticky summary comment,
+file annotations, outcome-driven check status (`examples/` has strict,
+advisory, and nightly-tune workflows). This repo dogfoods it on PRs to master
+(see `.github/workflows/jev-review.yml`) with the root `jev-pref.json`.
+
 ## Repo layout
 
 Skills are discovered by the `skills` CLI in `skills/` (up to 3 levels deep, so

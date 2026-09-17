@@ -13,3 +13,6 @@ jobs:
         with:
           node-version: 20
       - run: node scripts/validate-skills.mjs
+      - run: node packages/jev-pref/bin/jev-pref.js doctor
+        continue-on-error: true # no API key in CI; reports env state only
+      - run: node packages/jev-pref/bin/jev-pref.js tune --dry-run --evals-dir packages/jev-pref/evals

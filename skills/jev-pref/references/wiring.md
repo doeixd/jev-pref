@@ -41,8 +41,11 @@ the human-readable record.
 
 ## CI
 
-See `actions/review` (phase 3): PR diffs via `--pr`, inline + summary comments,
-check status failed iff gates fail.
+Use `doeixd/jev-pref/actions/review` (see `actions/review/README.md`):
+PR diffs via the base...head range, sticky summary comment + file
+annotations, check failed iff gates fail (see `fail-on`). Needs checkout
+with `fetch-depth: 0` and `TYPESAFE_API_KEY` in secrets. Start new repos on
+the `advisory.yml` example, switch to `strict.yml` once calibrated.
 
 ## Rules
 

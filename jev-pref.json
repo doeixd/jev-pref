@@ -1,0 +1,11 @@
+{
+  "$schema": "./packages/jev-pref/schema.json",
+  "suites": ["secrets", "prefs"],
+  "gateThreshold": 0.7,
+  "advisoryThreshold": 0.7,
+  "failOn": "gates",
+  "prefs": [
+    { "id": "no_real_keys", "gate": false, "text": "Docs, comments, and examples must not contain real API keys or tokens." },
+    { "id": "skill_layout", "gate": false, "text": "New skills live under skills/<name>/ with SKILL.md carrying name and description frontmatter." }
+  ]
+}

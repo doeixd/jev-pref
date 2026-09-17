@@ -1,0 +1,44 @@
+name: jev-pref tune regression
+on:
+  schedule:
+    - cron: "0 9 * * 1" # Mondays 09:00 UTC
+  workflow_dispatch:
+
+jobs:
+  tune-check:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      issues: write
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+      - name: eval regression
+        id: tune
+        env:
+          TYPESAFE_API_KEY: ${{ secrets.TYPESAFE_API_KEY }}
+        run: |
+          npx jev-pref@latest tune --sweep --evals-dir packages/jev-pref/evals | tee tune.txt
+          echo "report<<EOF" >> "$GITHUB_OUTPUT"
+          cat tune.txt >> "$GITHUB_OUTPUT"
+          echo "EOF" >> "$GITHUB_OUTPUT"
+      - name: file tune report
+        if: always()
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const title = 'jev-pref tune regression';
+            const body = `<!-- jev-pref-tune -->\n## ${title}\n\n\`\`\`\n${process.env.REPORT}\n\`\`\``;
+            const { data: issues } = await github.rest.issues.listForRepo({
+              owner: context.repo.owner, repo: context.repo.repo, state: 'open',
+            });
+            const existing = issues.find(i => (i.body || '').includes('jev-pref-tune'));
+            if (existing) {
+              await github.rest.issues.update({ owner: context.repo.owner, repo: context.repo.repo, issue_number: existing.number, body });
+            } else {
+              await github.rest.issues.create({ owner: context.repo.owner, repo: context.repo.repo, title, body });
+            }
+        env:
+          REPORT: ${{ steps.tune.outputs.report }}

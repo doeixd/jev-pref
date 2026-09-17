@@ -1,0 +1,89 @@
+name: jev-pref review
+description: Review PR diffs with Jev (TypeSafe) against user prefs + secrets gate
+author: doeixd
+
+inputs:
+  suites:
+    description: CSV suites to run
+    default: prefs,secrets
+  fail-on:
+    description: Which outcomes fail the check (gates|all|never)
+    default: gates
+  comment-mode:
+    description: PR comment behavior (both|summary|annotations|none)
+    default: both
+  gate-threshold:
+    description: Override gate threshold (default from config)
+    default: ""
+  advisory-threshold:
+    description: Override advisory threshold (default from config)
+    default: ""
+  config-path:
+    description: Path to jev-pref.json (default auto-discovered)
+    default: ""
+  working-directory:
+    description: Directory to review (and to resolve config/keys from)
+    default: .
+  base:
+    description: Base ref for the diff (default: PR base from the event)
+    default: ""
+  paths:
+    description: Newline/CSV glob filter — review only if a changed file matches
+    default: ""
+  paths-ignore:
+    description: Newline/CSV glob filter — skip files matching these
+    default: ""
+  engine:
+    description: Engine command (npx spec or local path to bin/jev-pref.js)
+    default: ""
+  engine-version:
+    description: jev-pref version when engine is npx (default latest)
+    default: latest
+  on-forks:
+    description: Fork PR behavior without secrets (dry-run|skip)
+    default: dry-run
+  api-key:
+    description: TypeSafe/Gateway key (prefer the TYPESAFE_API_KEY secret)
+    default: ""
+  github-token:
+    description: Token for PR comments (default github.token)
+    default: ${{ github.token }}
+  node-version:
+    description: Node version for setup-node
+    default: "24"
+
+outputs:
+  outcome:
+    description: approve|advisory|fix_now|skipped|dry-run|error
+    value: ${{ steps.review.outputs.outcome }}
+
+runs:
+  using: composite
+  steps:
+    - uses: actions/setup-node@v4
+      with:
+        node-version: ${{ inputs.node-version }}
+    - id: review
+      shell: bash
+      env:
+        INPUT_SUITES: ${{ inputs.suites }}
+        INPUT_FAIL_ON: ${{ inputs.fail-on }}
+        INPUT_COMMENT_MODE: ${{ inputs.comment-mode }}
+        INPUT_GATE_THRESHOLD: ${{ inputs.gate-threshold }}
+        INPUT_ADVISORY_THRESHOLD: ${{ inputs.advisory-threshold }}
+        INPUT_CONFIG_PATH: ${{ inputs.config-path }}
+        INPUT_WORKING_DIRECTORY: ${{ inputs.working-directory }}
+        INPUT_BASE: ${{ inputs.base }}
+        INPUT_PATHS: ${{ inputs.paths }}
+        INPUT_PATHS_IGNORE: ${{ inputs.paths-ignore }}
+        INPUT_ENGINE: ${{ inputs.engine }}
+        INPUT_ENGINE_VERSION: ${{ inputs.engine-version }}
+        INPUT_ON_FORKS: ${{ inputs.on-forks }}
+        INPUT_API_KEY: ${{ inputs.api-key }}
+        INPUT_GITHUB_TOKEN: ${{ inputs.github-token }}
+        TYPESAFE_API_KEY: ${{ inputs.api-key }}
+      run: node "$GITHUB_ACTION_PATH/scripts/review-pr.js"
+
+branding:
+  icon: eye
+  color: blue

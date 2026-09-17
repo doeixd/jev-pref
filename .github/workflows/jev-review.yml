@@ -1,0 +1,22 @@
+name: jev-pref (dogfood)
+on:
+  pull_request:
+    branches: [master]
+
+jobs:
+  review:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      pull-requests: write
+      issues: write
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: ./actions/review
+        with:
+          fail-on: gates
+          comment-mode: both
+          engine: ./packages/jev-pref/bin/jev-pref.js
+          api-key: ${{ secrets.TYPESAFE_API_KEY }}

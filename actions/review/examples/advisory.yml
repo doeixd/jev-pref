@@ -1,0 +1,27 @@
+name: jev-pref (advisory)
+on:
+  pull_request:
+    branches: [master]
+
+jobs:
+  review:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      pull-requests: write
+      issues: write
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: doeixd/jev-pref/actions/review@master
+        with:
+          # Comment only — never blocks merge. Start here to calibrate
+          # thresholds on real PRs before switching to strict.
+          fail-on: never
+          comment-mode: both
+          suites: prefs,secrets
+          paths-ignore: |
+            **/*.md
+            pnpm-lock.yaml
+          api-key: ${{ secrets.TYPESAFE_API_KEY }}
