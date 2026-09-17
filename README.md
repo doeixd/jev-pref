@@ -55,7 +55,7 @@ jev-pref/
 │   └── jev-pref/
 │       ├── SKILL.md           # required: name + description + instructions
 │       ├── references/        # jev-essentials, prefs-to-questions, interview, wiring
-│       └── assets/            # review-script-template.mjs + CLAUDE.md snippet
+│       └── assets/            # review-script-template.mjs + effect.ts + CLAUDE.md snippet
 ├── templates/
 │   └── skill-template/        # starter copy-paste template (not installed)
 │       └── SKILL.md

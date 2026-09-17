@@ -63,6 +63,12 @@ packed multi-clause factors, missing `other` (it picks least-bad anyway).
   `"typesafe-ai/jev"`, question types `choice` / `score` / `boolean`.
 - TS direct → `@typesafe-ai/sdk` (`TypeSafeClient.systemOne`, helpers
   `choice`/`noul`/`score`, else raw `{ type, instructions, criteria }`).
+- Effect v4 app → `assets/review-script-effect.ts` (Context.Service Git +
+  JevClient, `effect/unstable/cli` flags, Config-based keys, direct
+  `TYPESAFE_API_KEY` only). Install `effect@rc` + `@effect/platform-node@rc`.
+  Service keys use the multi-line `>()(\n "id",\n)` form — the single-line
+  form does not compile. CLI boolean flags need `Flag.withDefault(false)`.
+  Command handlers return void (record exit codes via `process.exitCode`).
 - Python → `typesafe-sdk` (`TypeSafeClient.system_one`, `Choice`/`Noul`/`Score`).
 - Shell one-off → `ai evaluate --boolean/--choice/--score` (`ai-cli`).
 - No SDK → `POST https://api.typesafe.ai/v1/systemone` with

@@ -4,6 +4,8 @@
 //   Direct TypeSafe fallback (npm i @typesafe-ai/sdk, env TYPESAFE_API_KEY) is
 //   handled below by mapping boolean->noul. Python (typesafe-sdk) and shell
 //   (ai-cli) need a different file — see references/jev-essentials.md.
+//   Effect v4 codebases: use review-script-effect.ts instead
+//   (see references/effect-stack.md).
 // Usage: node scripts/jev-review.mjs [--diff <git-ref>] [--dry-run]
 //   empty --diff = working tree (staged + unstaged) vs HEAD.
 //   PR / base-branch review: node scripts/jev-review.mjs --diff origin/main...HEAD

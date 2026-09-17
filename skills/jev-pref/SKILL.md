@@ -53,7 +53,9 @@ Ask before generating. Cover every item in `references/setup-interview.md`:
    `assets/review-script-template.mjs` to the agreed path. If the user chose
    Python or `ai-cli`: no template is bundled — hand-author the equivalent
    (one boolean per pref, one severity Score, one `next` Choice, thresholds in
-   code) using `references/jev-essentials.md` for the API shape.
+   code) using `references/jev-essentials.md` for the API shape. If the codebase
+   is Effect v4: copy `assets/review-script-effect.ts` instead (needs
+   `TYPESAFE_API_KEY`; Gateway-only shops keep the `.mjs` template).
 2. Translate each preference into **one narrow Jev question** per
    `references/prefs-to-questions.md` (one boolean/Noul per pref — Gateway calls
    it `boolean`, native calls it `noul`, same semantics — plus one severity Score

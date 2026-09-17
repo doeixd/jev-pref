@@ -5,8 +5,10 @@ Ask all of these; do not guess. Record answers in the script header.
 1. **Script path** — default `scripts/jev-review.mjs`. Confirm or take theirs.
 2. **Stack** — default TypeScript + AI Gateway (`experimental_evaluate`,
    `AI_GATEWAY_API_KEY`). A TS template is bundled for Gateway and direct
-   (`@typesafe-ai/sdk`, `TYPESAFE_API_KEY`) paths. Python `typesafe-sdk` and
-   shell `ai-cli` are supported but hand-authored (no bundled template). Pick one.
+   (`@typesafe-ai/sdk`, `TYPESAFE_API_KEY`) paths. Effect v4 codebases get the
+   Effect template (`assets/review-script-effect.ts`, direct `TYPESAFE_API_KEY`
+   only). Python `typesafe-sdk` and shell `ai-cli` are supported but
+   hand-authored (no bundled template). Pick one.
 3. **Review scope** — which diffs: working tree (default), staged only, commit
    range (`HEAD~n...HEAD`), PR vs base (`--diff origin/main...HEAD`)? Support
    `--diff` flag accordingly (the template already accepts refs and `A...B` ranges).
