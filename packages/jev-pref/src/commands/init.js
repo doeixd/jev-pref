@@ -4,7 +4,7 @@
 // instruction to CLAUDE.md / AGENTS.md.
 import { createInterface } from "node:readline";
 import { readFile, writeFile } from "node:fs/promises";
-import { join } from "node:path";
+import { isAbsolute, join, resolve } from "node:path";
 import { boolFlag, strFlag } from "../args.js";
 
 const FENCE = "```jev-prefs";
@@ -35,6 +35,8 @@ export async function init(argv, { cwd = ".", out = console, input = process.std
       suites: (strFlag(flags, "suites") ?? "prefs").split(",").map((s) => s.trim()).filter(Boolean),
       trigger: strFlag(flags, "trigger") ?? "after every task",
       wire: wireTarget ?? "both",
+      hunks: boolFlag(flags, "hunks"),
+      agentCmd: strFlag(flags, "agent-cmd"),
       outPath: strFlag(flags, "out") ?? join(cwd, "jev-pref.json"),
     };
   } else {
@@ -45,8 +47,21 @@ export async function init(argv, { cwd = ".", out = console, input = process.std
       const suites = await askPrompt(rl, "suites (csv: prefs,secrets)", "prefs");
       const trigger = await askPrompt(rl, "run trigger (e.g. after every task)", "after every task");
       const wire = wireTarget ?? await askPrompt(rl, "wire (claude/agents/both/none)", "both");
+      const hunksAnswer = boolFlag(flags, "hunks")
+        ? "yes"
+        : await askPrompt(rl, "per-hunk review? (yes/no)", "no");
+      const agentCmd = strFlag(flags, "agent-cmd") ?? await askPrompt(rl, "agent handoff command (empty for none)", "");
       const outPath = await askPrompt(rl, "config path", join(cwd, "jev-pref.json"));
-      answers = { stack, scope, suites: suites.split(",").map((s) => s.trim()).filter(Boolean), trigger, wire, outPath };
+      answers = {
+        stack,
+        scope,
+        suites: suites.split(",").map((s) => s.trim()).filter(Boolean),
+        trigger,
+        wire,
+        hunks: ["1", "true", "yes"].includes(hunksAnswer.toLowerCase()),
+        agentCmd: agentCmd === "" ? undefined : agentCmd,
+        outPath,
+      };
     } finally {
       rl.close();
     }
@@ -60,6 +75,19 @@ export async function init(argv, { cwd = ".", out = console, input = process.std
     out.error(`review-error: unknown scope ${JSON.stringify(answers.scope)} (known: ${SCOPES.join(", ")})`);
     return 2;
   }
+  if (!["claude", "agents", "both", "none"].includes(answers.wire)) {
+    out.error(`review-error: unknown wire target ${JSON.stringify(answers.wire)} (known: claude, agents, both, none)`);
+    return 2;
+  }
+  if (answers.trigger.trim() === "") {
+    out.error("review-error: trigger must not be empty (when should review run?)");
+    return 2;
+  }
+  const agentCommand = (answers.agentCmd ?? "").split(/\s+/).filter(Boolean);
+  if (answers.agentCmd !== undefined && agentCommand.length === 0) {
+    out.error("review-error: --agent-cmd must not be empty");
+    return 2;
+  }
 
   const config = {
     $schema: "https://raw.githubusercontent.com/doeixd/jev-pref/main/packages/jev-pref/schema.json",
@@ -67,23 +95,27 @@ export async function init(argv, { cwd = ".", out = console, input = process.std
     gateThreshold: 0.7,
     advisoryThreshold: 0.7,
     failOn: "gates",
+    ...(answers.hunks ? { hunks: true } : {}),
+    ...(agentCommand.length > 0 ? { agent: { command: agentCommand, on: ["fix_now"] } } : {}),
     prefs: [],
   };
 
-  const reviewCmd = answers.scope === "pr"
-    ? "npx jev-pref review --pr"
-    : answers.scope === "staged"
-    ? "npx jev-pref review --staged"
-    : "npx jev-pref review";
-  const block = `${FENCE}\n${JSON.stringify(config, null, 2)}\n\`\`\`\n\n## Preference review (Jev)\n\n${answers.trigger[0].toUpperCase()}${answers.trigger.slice(1)}, run:\n\n  ${reviewCmd}\n\n- Exit 1 (gate violated) → fix the flagged prefs and re-run (max 3 times, then escalate).\n- Exit 0 with advisory notes → address or explicitly note why not.\n- Exit 0 clean → continue.\n- Exit 2 (config/infra error) → fix setup; never treat as approval.\n- Keys come from the environment (\`JEV_API_KEY\`/\`TYPESAFE_API_KEY\`/\`AI_GATEWAY_API_KEY\`); never commit them.\n`;
+  const reviewCmd = [
+    "npx jev-pref review",
+    answers.scope === "pr" ? "--pr" : answers.scope === "staged" ? "--staged" : null,
+    answers.hunks ? "--hunks" : null,
+  ].filter(Boolean).join(" ");
+  const triggerText = answers.trigger[0].toUpperCase() + answers.trigger.slice(1);
+  const block = `${FENCE}\n${JSON.stringify(config, null, 2)}\n\`\`\`\n\n## Preference review (Jev)\n\n${triggerText}, run:\n\n  ${reviewCmd}\n\n- Exit 1 (gate violated) → fix the flagged prefs and re-run (max 3 times, then escalate).\n- Exit 0 with advisory notes → address or explicitly note why not.\n- Exit 0 clean → continue.\n- Exit 2 (config/infra error) → fix setup; never treat as approval.\n- Keys come from the environment (\`JEV_API_KEY\`/\`TYPESAFE_API_KEY\`/\`AI_GATEWAY_API_KEY\`); never commit them.\n`;
 
   if (print) {
     out.log(block);
     return 0;
   }
 
-  await writeFile(answers.outPath, JSON.stringify(config, null, 2) + "\n");
-  out.log(`wrote ${answers.outPath} — now add your prefs to its "prefs" array (see skill references/prefs-to-questions.md)`);
+  const outPath = isAbsolute(answers.outPath) ? answers.outPath : resolve(cwd, answers.outPath);
+  await writeFile(outPath, JSON.stringify(config, null, 2) + "\n");
+  out.log(`wrote ${outPath} — now add your prefs to its "prefs" array (see skill references/prefs-to-questions.md)`);
 
   const targets = answers.wire === "both"
     ? [join(cwd, "CLAUDE.md"), join(cwd, "AGENTS.md")]
@@ -106,7 +138,9 @@ export async function init(argv, { cwd = ".", out = console, input = process.std
     await writeFile(target, `${existing}${existing.endsWith("\n") || existing === "" ? "" : "\n"}\n${block}`);
     out.log(`wired ${target}`);
   }
-  if (answers.stack !== "gateway" && answers.stack !== "direct") {
+  if (answers.stack === "effect") {
+    out.log('note: stack "effect" uses the hand-authored template — see the jev-pref skill assets/review-script-effect.ts');
+  } else if (answers.stack !== "gateway" && answers.stack !== "direct") {
     out.log(`note: stack "${answers.stack}" has no bundled template yet — see the jev-pref skill for hand-authoring guidance`);
   }
   return 0;

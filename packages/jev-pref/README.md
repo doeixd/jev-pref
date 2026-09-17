@@ -15,13 +15,22 @@ No global install needed. For hooks, pin a version: `npx jev-pref@0.1.0 review`.
 
 ```bash
 npx jev-pref review [--diff REF] [--staged] [--pr] [--suites prefs,secrets]
-                    [--json] [--dry-run] [--fail-on gates|all|never]
+                    [--json] [--dry-run] [--hunks|--no-hunks] [--max-hunks N]
+                    [--include G] [--exclude G]
+                    [--agent-cmd BIN] [--agent-input json|text|none]
+                    [--agent-on fix_now] [--agent-timeout-ms MS]
+                    [--fail-on gates|all|never]
                     [--gate-threshold N] [--advisory-threshold N]
-                    [--config PATH] [--model M] [--timeout-ms MS]
+                    [--severity-fail N]
+                    [--config PATH] [--model M] [--base-url U]
+                    [--provider typesafe|vercel] [--timeout-ms MS]
+                    [--max-diff-chars N]
 npx jev-pref init [--yes] [--stack S] [--scope S] [--suites S] [--trigger T]
-                  [--wire claude|agents|both|none] [--out PATH] [--print]
-npx jev-pref tune [--sweep] [--evals-dir DIR] [--dry-run]
-npx jev-pref doctor [--verbose]
+                  [--wire claude|agents|both|none] [--hunks] [--agent-cmd BIN]
+                  [--out PATH] [--print]
+npx jev-pref tune [--sweep] [--check] [--evals-dir DIR] [--dry-run]
+                  [--config PATH]
+npx jev-pref doctor [--verbose] [--config PATH]
 ```
 
 Exit codes: `0` approve/ok, `1` gate violated, `2` infra/config/usage error
@@ -39,6 +48,9 @@ in `CLAUDE.md`/`AGENTS.md` > built-ins. See `schema.json` for the full shape.
 | `JEV_GATE_THRESHOLD`, `JEV_ADVISORY_THRESHOLD`, `JEV_SEVERITY_FAIL` | Threshold overrides |
 | `JEV_FAIL_ON` | `gates`\|`all`\|`never` |
 | `JEV_TIMEOUT_MS`, `JEV_MAX_DIFF_CHARS`, `JEV_MODEL`, `JEV_BASE_URL`, `JEV_PROVIDER` | Client tuning |
+| `JEV_HUNKS`, `JEV_MAX_HUNKS` | Per-hunk review toggle + cap |
+| `JEV_INCLUDE`, `JEV_EXCLUDE` | csv path filters (engine `--include`/`--exclude`) |
+| `JEV_AGENT_TIMEOUT_MS` | Agent handoff timeout override |
 | `JEV_ZERO_DATA_RETENTION` | Gateway zero-data-retention flag |
 | `JEV_CONFIG` | Config path override |
 
@@ -50,6 +62,38 @@ Keys are env-only — never committed.
 - `secrets` — built-in gate for leaked credentials/PII. Always gates.
 
 Both suites batch into a single Jev call (more questions ≈ same latency).
+Add `--hunks` for per-hunk calls instead: each diff hunk (and each new file)
+is judged in isolation with file:line attribution, at the cost of one Jev
+call per hunk (capped by `--max-hunks`, default 10 — overflow falls back to
+whole-diff). Hunk verdicts power true inline PR comments.
+
+## Agent handoff
+
+Pipe the verdict into a command of your choice (a coding agent for fixes,
+a notifier, a ticket filer):
+
+```json
+{
+  "agent": {
+    "command": ["claude", "-p", "Fix these review findings: {verdict}"],
+    "input": "json",
+    "on": ["fix_now"],
+    "timeoutMs": 300000
+  }
+}
+```
+
+- `command` is an argv array (bin first) — never a shell string, so diff
+  content cannot inject. Placeholders in any entry are replaced literally:
+  `{verdict}` human text, `{json}` full payload, `{files}` csv, `{outcome}`.
+- `input`: `json` (default, full payload on stdin), `text`, or `none`.
+- `on`: which outcomes trigger it (`fix_now` default; add `advisory` to
+  escalate notes too). Failures exit 2 (`agent-error`), never silent.
+- Flags: `--agent-cmd "claude -p"` (whitespace-split; config array for exact
+  args), `--agent-input`, `--agent-on`, `--agent-timeout-ms`.
+  Env: `JEV_AGENT_CMD`, `JEV_AGENT_INPUT`, `JEV_AGENT_ON`,
+  `JEV_AGENT_TIMEOUT_MS`. Hunk flags: `--hunks` / `--no-hunks`, `--max-hunks`
+  (env `JEV_HUNKS`, `JEV_MAX_HUNKS`).
 
 ## Evals
 

@@ -10,6 +10,21 @@
     "failOn": { "type": "string", "enum": ["gates", "all", "never"], "default": "gates" },
     "timeoutMs": { "type": "integer", "minimum": 1, "default": 60000 },
     "maxDiffChars": { "type": "integer", "minimum": 1, "default": 24000 },
+    "hunks": { "type": "boolean", "default": false },
+    "maxHunks": { "type": "integer", "minimum": 1, "default": 10 },
+    "include": { "type": "array", "items": { "type": "string" }, "default": [] },
+    "exclude": { "type": "array", "items": { "type": "string" }, "default": [] },
+    "agent": {
+      "type": ["object", "null"],
+      "default": null,
+      "properties": {
+        "command": { "type": "array", "items": { "type": "string" }, "minItems": 1 },
+        "input": { "type": "string", "enum": ["json", "text", "none"], "default": "json" },
+        "on": { "type": "array", "items": { "type": "string", "enum": ["fix_now", "advisory", "approve"] }, "default": ["fix_now"] },
+        "timeoutMs": { "type": "integer", "minimum": 1, "default": 300000 }
+      },
+      "required": ["command"]
+    },
     "model": { "type": "string" },
     "baseUrl": { "type": "string" },
     "provider": { "type": "string", "enum": ["typesafe", "vercel"] },

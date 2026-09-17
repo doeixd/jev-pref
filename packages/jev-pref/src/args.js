@@ -1,7 +1,7 @@
-// Argument parsing shared by the CLI and (later) the GitHub Action input mapper.
-// Supports `--flag value`, `--flag=value`, boolean `--flag`, and `-abc` shorts
-// only where explicitly registered. Unknown `--x=y` never silently falls back:
-// unknown flags throw InvalidArgs (exit 2), never a wrong-scope review.
+// Argument parsing shared by the CLI. Supports `--flag value`, `--flag=value`,
+// boolean `--flag`, and exact single-char shorts (`-n` → flags.n).
+// Typo safety comes from per-command known-flag validation in cli.js — unknown
+// `--flags` are rejected (exit 2), never silently ignored into wrong behavior.
 
 export class InvalidArgs extends Error {
   constructor(message) {
@@ -12,12 +12,20 @@ export class InvalidArgs extends Error {
 
 /**
  * Parse argv into { command, positional, flags }.
- * flags maps kebab-case names to string | true. `--no-x` is not supported;
- * use explicit `--x false`? No — booleans are presence flags (see commands).
+ * flags maps kebab-case names to string | true. `--flag=false` (or false/0)
+ * is readable via boolFlag; single-dash multi-char tokens stay positional.
+ * A repeated --flag accumulates into an array (for repeatable list flags);
+ * single-value readers reject arrays as usage errors.
  */
 export function parseArgs(argv) {
   const positional = [];
   const flags = {};
+  const add = (key, value) => {
+    if (!key) throw new InvalidArgs(`bad flag ${JSON.stringify(key)}`);
+    if (flags[key] === undefined) flags[key] = value;
+    else if (Array.isArray(flags[key])) flags[key].push(value);
+    else flags[key] = [flags[key], value];
+  };
   for (let i = 0; i < argv.length; i++) {
     const a = argv[i];
     if (a === "--") {
@@ -28,22 +36,24 @@ export function parseArgs(argv) {
       const eq = a.indexOf("=");
       if (eq !== -1) {
         const key = a.slice(2, eq);
-        if (!key) throw new InvalidArgs(`bad flag ${JSON.stringify(a)}`);
-        flags[key] = a.slice(eq + 1);
+        add(key, a.slice(eq + 1));
       } else {
         const key = a.slice(2);
         if (!key) throw new InvalidArgs(`bad flag ${JSON.stringify(a)}`);
         const next = argv[i + 1];
         if (next !== undefined && !next.startsWith("-")) {
-          flags[key] = next;
+          add(key, next);
           i++;
         } else {
-          flags[key] = true;
+          add(key, true);
         }
       }
+    } else if (/^-[A-Za-z]$/.test(a)) {
+      const key = a[1];
+      if (flags[key] === undefined) flags[key] = true;
+      else if (Array.isArray(flags[key])) flags[key].push(true);
+      else flags[key] = [flags[key], true];
     } else if (a.startsWith("-") && a.length > 1) {
-      // Single-dash clusters are NOT expanded (avoids `-n` vs `-n value`
-      // ambiguity); only exact registered shorts are handled by commands.
       positional.push(a);
     } else {
       positional.push(a);
@@ -56,15 +66,37 @@ export function parseArgs(argv) {
 /** Read a flag as string|undefined (presence-true counts as undefined). */
 export function strFlag(flags, name) {
   const v = flags[name];
-  return typeof v === "string" ? v : undefined;
+  if (v === undefined || v === true) return undefined;
+  if (Array.isArray(v)) {
+    throw new InvalidArgs(`--${name} must not repeat (got ${v.length} values)`);
+  }
+  return v;
 }
 
-/** True only with explicit truthy values or bare presence where allowed. */
-export function boolFlag(flags, name, { presence = true } = {}) {
+/** Read a repeatable csv flag as string[]|undefined (repeat + comma both ok). */
+export function listFlag(flags, name) {
   const v = flags[name];
-  if (v === undefined) return false;
-  if (v === true) return presence;
-  return ["1", "true", "yes"].includes(String(v).toLowerCase());
+  if (v === undefined) return undefined;
+  const parts = (Array.isArray(v) ? v : [v]).flatMap((one) => {
+    if (one === true) throw new InvalidArgs(`--${name} needs a value`);
+    return String(one).split(",");
+  }).map((s) => s.trim()).filter(Boolean);
+  return parts;
+}
+
+/** True for bare presence and truthy values; false for false/0/no and unset. */
+export function boolFlag(flags, name, { presence = true } = {}) {
+  const one = (v) => {
+    if (v === undefined) return false;
+    if (v === true) return presence;
+    const s = String(v).toLowerCase();
+    if (["1", "true", "yes"].includes(s)) return true;
+    if (["0", "false", "no"].includes(s)) return false;
+    throw new InvalidArgs(`--${name} must be true/false, got ${JSON.stringify(v)}`);
+  };
+  const v = flags[name];
+  if (Array.isArray(v)) return v.map(one).some(Boolean);
+  return one(v);
 }
 
 /** Parse a float flag within [min, max]; throws InvalidArgs otherwise. */

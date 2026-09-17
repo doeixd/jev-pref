@@ -40,8 +40,9 @@ Permissions: `contents: read`, `pull-requests: write`, `issues: write`.
 ## Behavior
 
 - One sticky comment per PR (updated in place, collapsible per-suite details).
+  Per-hunk engine output is aggregated per suite with `[file:line]` prefixes.
 - File annotations (`error` on gates, `warning` on advisories) surface in the
-  Files tab. Verdicts are diff-level, not line-level — annotations attach per file.
+  Files tab, attached per file.
 - Check fails iff `fail-on` says so. Engine infra errors always fail loud.
 - Forks without secrets degrade per `on-forks` (tokens are read-only there).
 

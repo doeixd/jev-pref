@@ -26,6 +26,10 @@ export class UnsafeRefError extends Error {
 
 export const SAFE_REF = /^[A-Za-z0-9_.\-/~:^{}]+$/;
 
+export function assertSafeRef(ref) {
+  if (!SAFE_REF.test(ref) || ref.startsWith("-")) throw new UnsafeRefError(ref);
+}
+
 const BINARY_EXT = new Set([
   ".png", ".jpg", ".jpeg", ".gif", ".webp", ".ico", ".bmp", ".avif",
   ".zip", ".gz", ".tgz", ".tar", ".7z", ".pdf", ".woff", ".woff2",
@@ -60,6 +64,7 @@ async function hasHead(root) {
 
 async function untrackedContent(root, list, budget) {
   const out = [];
+  const sections = [];
   let used = 0;
   for (const f of list.split("\n").map((s) => s.trim()).filter(Boolean).slice(0, 20)) {
     if (BINARY_EXT.has(extname(f).toLowerCase())) {
@@ -83,33 +88,46 @@ async function untrackedContent(root, list, budget) {
         continue;
       }
       used += content.length;
-      out.push(`--- new file: ${f} ---\n${content}`);
+      const section = `--- new file: ${f} ---\n${content}`;
+      out.push(section);
+      sections.push({ file: f, text: section });
     } catch {
       out.push(`--- new file: ${f} (unreadable, skipped) ---`);
     }
   }
-  return out.join("\n");
+  return { text: out.join("\n"), sections };
 }
 
 /**
  * Collect review state.
- * @param {object} opts - { ref?: string|null, staged?: boolean, maxDiffChars }
+ * @param {object} opts - { ref?: string|null, staged?: boolean, maxDiffChars,
+ *   include?: string[], exclude?: string[] }
  * ref = explicit git ref/range (allowlisted); staged = --cached only.
+ * Untracked files are included ONLY for working-tree scope — a --staged,
+ * --diff, or --pr review judges exactly what that scope contains.
  */
-export async function collectState({ cwd = ".", ref = null, staged = false, maxDiffChars = 24000 } = {}) {
-  if (ref != null && !SAFE_REF.test(ref)) throw new UnsafeRefError(ref);
+export async function collectState({ cwd = ".", ref = null, staged = false, maxDiffChars = 24000, include = [], exclude = [] } = {}) {
+  if (ref != null) assertSafeRef(ref);
   // Anchor at the repo root: pathspecs and untracked listings are cwd-scoped.
+  // review always needs a repo — fail fast with a clear message otherwise.
   let root;
   try {
     root = (await runGit(["rev-parse", "--show-toplevel"], cwd)).trim();
   } catch {
-    root = cwd;
+    throw new GitError("rev-parse --show-toplevel", `not a git repository: ${cwd} (run jev-pref review inside one)`);
   }
   const head = await hasHead(root);
-  const scope = ["--", ".", ":!package-lock.json", ":!pnpm-lock.yaml"];
+  // Default exclusions keep generated lockfiles out of the Jev context;
+  // --include replaces the "." root (pathspecs OR, so additive includes
+  // would expand, not restrict); --exclude appends exclusions on top.
+  const lockExcludes = [":!package-lock.json", ":!pnpm-lock.yaml", ":!yarn.lock", ":!bun.lockb"];
+  const roots = include.length > 0 ? include.map((g) => `:(glob)${g}`) : ["."];
+  const excludes = [...lockExcludes, ...exclude.map((g) => `:(exclude,glob)${g}`)];
+  const scope = ["--", ...roots, ...excludes];
   let rawDiff;
+  const workingTree = !staged && ref == null;
   if (staged) {
-    rawDiff = await runGit(["diff", "--cached", "--", ".", ":!package-lock.json", ":!pnpm-lock.yaml"], root);
+    rawDiff = await runGit(["diff", "--cached", ...scope], root);
   } else if (ref != null) {
     rawDiff = await runGit(["diff", ref, ...scope], root);
   } else if (head) {
@@ -119,27 +137,33 @@ export async function collectState({ cwd = ".", ref = null, staged = false, maxD
     const cached = await runGit(["diff", "--cached", ...scope], root);
     rawDiff = unstaged + cached;
   }
-  const status = await runGit(["status", "--porcelain"], root);
-  const untracked = (await runGit(["ls-files", "--others", "--exclude-standard"], root)).trim();
+  const status = await runGit(["status", "--porcelain", ...scope], root);
+  // Untracked files belong to working-tree scope only. In --staged / --diff /
+  // --pr scope they would judge code the scope explicitly excludes.
+  const untracked = workingTree
+    ? (await runGit(["ls-files", "--others", "--exclude-standard", ...scope], root)).trim()
+    : "";
   const statOut = ref != null
-    ? await runGit(["diff", "--stat", ref], root)
+    ? await runGit(["diff", "--stat", ref, ...scope], root)
     : staged
-    ? await runGit(["diff", "--cached", "--stat", "HEAD"], root).catch(() => "")
+    ? await runGit(["diff", "--cached", "--stat", "HEAD", ...scope], root).catch(() => "")
     : head
-    ? await runGit(["diff", "--stat", "HEAD"], root)
-    : await runGit(["status", "--short"], root);
+    ? await runGit(["diff", "--stat", "HEAD", ...scope], root)
+    : await runGit(["status", "--short", ...scope], root).catch(() => "");
   const branch = await runGit(["rev-parse", "--abbrev-ref", "HEAD"], root).then(
     (b) => b.trim(),
     () => "(unknown)",
   );
   let diff = rawDiff.slice(0, maxDiffChars);
   let truncated = rawDiff.length > maxDiffChars;
+  let untrackedSections = [];
   if (untracked !== "") {
     const extra = await untrackedContent(root, untracked, maxDiffChars - diff.length);
-    if (extra !== "") {
-      const combined = diff !== "" ? diff + "\n" + extra : extra;
+    if (extra.text !== "") {
+      const combined = diff !== "" ? diff + "\n" + extra.text : extra.text;
       diff = combined.slice(0, maxDiffChars);
       truncated = truncated || combined.length > maxDiffChars;
+      untrackedSections = extra.sections;
     }
   }
   return {
@@ -147,6 +171,7 @@ export async function collectState({ cwd = ".", ref = null, staged = false, maxD
     truncated,
     status: status.trim(),
     untracked,
+    untrackedSections,
     stat: statOut.trim(),
     branch,
     scope: staged ? "staged" : ref ?? "working-tree",

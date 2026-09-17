@@ -15,6 +15,7 @@
   "files": [
     "bin/",
     "src/",
+    "schema.json",
     "README.md"
   ],
   "license": "MIT"

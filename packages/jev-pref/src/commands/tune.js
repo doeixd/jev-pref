@@ -1,12 +1,13 @@
 // `jev-pref tune` — v1: run evals/ labeled cases at the configured thresholds
 // and report per-pref accuracy; --sweep tries thresholds {0.5..0.9} and
 // proposes the best per-pref values as a config diff (asks nothing — the
-// agent/user applies it). Needs a live key (like review); --dry-run prints
-// what would run.
+// agent/user applies it); --check fails (exit 1) below the 50% accuracy bar
+// for CI gates. Needs a live key (like review); --dry-run prints what would
+// run. Honors --config.
 import { readdir, readFile } from "node:fs/promises";
 import { join } from "node:path";
 import { boolFlag, strFlag } from "../args.js";
-import { resolveConfig, validateConfig } from "../config.js";
+import { resolveApiKey, resolveConfig, validateConfig } from "../config.js";
 import { evaluate } from "../jev.js";
 import { buildQuestions } from "../suites/prefs.js";
 
@@ -35,9 +36,19 @@ export async function tune(argv, { cwd = ".", out = console } = {}) {
   const { flags } = argv;
   const dryRun = boolFlag(flags, "dry-run");
   const sweep = boolFlag(flags, "sweep");
+  const check = boolFlag(flags, "check");
   const evalsDir = strFlag(flags, "evals-dir") ?? join(cwd, "evals");
 
-  const { config } = await resolveConfig({ rootDir: cwd, flags: {} });
+  let config;
+  try {
+    ({ config } = await resolveConfig({
+      rootDir: cwd,
+      flags: strFlag(flags, "config") !== undefined ? { config: strFlag(flags, "config") } : {},
+    }));
+  } catch (e) {
+    out.error(`review-error: ${e?.message ?? String(e)}`);
+    return 2;
+  }
   const errors = validateConfig(config);
   if (errors.length > 0) {
     out.error(`review-error: invalid config: ${errors.join("; ")}`);
@@ -66,12 +77,13 @@ export async function tune(argv, { cwd = ".", out = console } = {}) {
   }
 
   const questions = buildQuestions(config.prefs);
+  const client = { apiKey: resolveApiKey() };
   const state = (c) => ({ prefs: config.prefs.map((p) => `${p.id}: ${p.text}`), diff: c.diff });
   const probs = {}; // file -> { prefId -> P }
   for (const c of cases) {
     let answers;
     try {
-      answers = await evaluate({ state: state(c), questions, client: {}, timeoutMs: config.timeoutMs });
+      answers = await evaluate({ state: state(c), questions, client, timeoutMs: config.timeoutMs });
     } catch (e) {
       out.error(`review-error: eval ${c.file}: ${e.message}`);
       return 2;
@@ -97,6 +109,10 @@ export async function tune(argv, { cwd = ".", out = console } = {}) {
 
   const current = accuracy(config.gateThreshold);
   out.log(`accuracy @ gateThreshold=${config.gateThreshold}: ${current === null ? "n/a (no labeled prefs)" : `${(current * 100).toFixed(1)}% over ${cases.length} cases`}`);
+  if (check && (current === null || current < 0.5)) {
+    out.error(`review-error: tune --check failed: accuracy ${current === null ? "n/a" : `${(current * 100).toFixed(1)}%`} below 50% bar`);
+    return 1;
+  }
   if (!sweep) return 0;
 
   let best = { t: config.gateThreshold, acc: current ?? -1 };

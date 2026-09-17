@@ -99,6 +99,35 @@ function emitOutput(name, value) {
   out(`output ${line}`);
 }
 
+/**
+ * Normalize engine verdict shapes: whole-diff ({ outcome, suites, files })
+ * and per-hunk ({ outcome, hunks: [{ label, suites }], files }). Hunk mode
+ * aggregates per-suite with [file:line] item prefixes so the sticky comment
+ * keeps file attribution.
+ */
+function normalizeVerdict(v) {
+  if (v && Array.isArray(v.suites)) {
+    return { outcome: v.outcome ?? "error", suites: v.suites, files: v.files ?? [] };
+  }
+  if (v && Array.isArray(v.hunks)) {
+    const bySuite = new Map();
+    for (const h of v.hunks) {
+      for (const s of h.suites ?? []) {
+        if (!bySuite.has(s.suite)) {
+          bySuite.set(s.suite, { suite: s.suite, outcome: "approve", failures: [], notes: [] });
+        }
+        const agg = bySuite.get(s.suite);
+        for (const f of s.failures ?? []) agg.failures.push(`[${h.label}] ${f}`);
+        for (const n of s.notes ?? []) agg.notes.push(`[${h.label}] ${n}`);
+        if (s.outcome === "fix_now") agg.outcome = "fix_now";
+        else if (s.outcome === "advisory" && agg.outcome !== "fix_now") agg.outcome = "advisory";
+      }
+    }
+    return { outcome: v.outcome ?? "error", suites: [...bySuite.values()], files: v.files ?? [] };
+  }
+  return { outcome: v?.outcome ?? "error", suites: [], files: [] };
+}
+
 async function main() {
   const inp = (n, def = "") => process.env[`INPUT_${n}`] ?? def;
   const suites = inp("SUITES", "prefs,secrets");
@@ -193,14 +222,22 @@ async function main() {
       maxBuffer: 20 * 1024 * 1024,
       env: { ...process.env },
     });
-    // Engine prints exactly one JSON object with --json (or --dry-run JSON).
-    const start = stdout.indexOf("{");
-    verdict = JSON.parse(stdout.slice(start));
+    // Engine --json prints the verdict alone on stdout (diagnostics go to
+    // stderr); parse strictly first, fall back to first-{ slicing for older
+    // engines whose progress lines share stdout.
+    const raw = stdout.trim();
+    try {
+      verdict = JSON.parse(raw);
+    } catch {
+      const start = raw.indexOf("{");
+      verdict = JSON.parse(raw.slice(start));
+    }
   } catch (e) {
     errOut(`review-error: engine failed: ${e.message}`);
     await emitOutput("outcome", "error");
     return 1;
   }
+  verdict = normalizeVerdict(verdict);
 
   if (forkDryRun) {
     out("jev-pref: fork PR without secrets — dry-run shape only (see log)");

@@ -14,6 +14,11 @@ export const DEFAULTS = {
   failOn: "gates", // gates | all | never
   timeoutMs: 60000,
   maxDiffChars: 24000,
+  hunks: false,
+  maxHunks: 10,
+  include: [],
+  exclude: [],
+  agent: null, // { command: [...argv], input: json|text|none, on: [fix_now], timeoutMs }
   model: undefined, // undefined = advocaat default (jev-latest / typesafe-ai/jev)
   baseUrl: undefined,
   provider: undefined, // typesafe | vercel | undefined (auto)
@@ -29,6 +34,10 @@ const ENV_MAP = [
   ["JEV_FAIL_ON", "failOn", String],
   ["JEV_TIMEOUT_MS", "timeoutMs", Number],
   ["JEV_MAX_DIFF_CHARS", "maxDiffChars", Number],
+  ["JEV_HUNKS", "hunks", (v) => ["1", "true", "yes"].includes(v.toLowerCase())],
+  ["JEV_MAX_HUNKS", "maxHunks", Number],
+  ["JEV_INCLUDE", "include", (v) => v.split(",").map((s) => s.trim()).filter(Boolean)],
+  ["JEV_EXCLUDE", "exclude", (v) => v.split(",").map((s) => s.trim()).filter(Boolean)],
   ["JEV_MODEL", "model", String],
   ["JEV_BASE_URL", "baseUrl", String],
   ["JEV_PROVIDER", "provider", String],
@@ -51,10 +60,17 @@ function readEnv() {
 }
 
 async function readJsonFile(path) {
+  let text;
   try {
-    return JSON.parse(await readFile(path, "utf8"));
-  } catch {
-    return undefined;
+    text = await readFile(path, "utf8");
+  } catch (e) {
+    if (e?.code === "ENOENT") return { found: false };
+    throw new Error(`cannot read config ${path}: ${e?.message ?? String(e)}`);
+  }
+  try {
+    return { found: true, value: JSON.parse(text) };
+  } catch (e) {
+    throw new Error(`invalid JSON in ${path}: ${e?.message ?? String(e)}`);
   }
 }
 
@@ -90,17 +106,30 @@ function pick(obj, keys) {
   return out;
 }
 
-const KNOWN_KEYS = Object.keys(DEFAULTS).concat(["configPath", "prefsPath"]);
+const KNOWN_KEYS = Object.keys(DEFAULTS);
 
 /**
  * Merge, in increasing precedence: defaults < fenced < json < env < flags.
  * Unknown keys are dropped (typo safety). Returns { config, sources } where
  * sources notes which layer provided each key (for `doctor --verbose`).
+ * A malformed jev-pref.json is a hard error (exit 2), never silent defaults.
  */
 export async function resolveConfig({ rootDir = ".", flags = {} } = {}) {
   const env = readEnv();
   const configPath = flags.config ?? env.configPath ?? join(rootDir, "jev-pref.json");
-  const json = (await readJsonFile(configPath)) ?? {};
+  const isDefaultPath = configPath === join(rootDir, "jev-pref.json") && flags.config === undefined && env.configPath === undefined;
+  let json = {};
+  // A missing default config is fine (fenced block / flags may supply prefs);
+  // a present-but-broken one must fail loud.
+  const loaded = await readJsonFile(configPath);
+  if (loaded.found) {
+    if (loaded.value === null || typeof loaded.value !== "object" || Array.isArray(loaded.value)) {
+      throw new Error(`invalid JSON in ${configPath}: top level must be an object`);
+    }
+    json = loaded.value;
+  } else if (!isDefaultPath) {
+    throw new Error(`config not found: ${configPath}`);
+  }
   const fenced = (await readFencedBlock(rootDir)) ?? {};
 
   const layers = [
@@ -121,12 +150,9 @@ export async function resolveConfig({ rootDir = ".", flags = {} } = {}) {
   return { config, sources, configPath };
 }
 
-/** API key resolution: explicit flag/env only, else undefined (advocaat cascades). */
-export function resolveApiKey(flags = {}) {
-  if (typeof flags.apiKey === "string" && flags.apiKey !== "") return flags.apiKey;
-  const env = process.env.JEV_API_KEY;
-  if (env) return env;
-  return undefined;
+/** API key resolution is env-only by design (never flags, never files). */
+export function resolveApiKey() {
+  return process.env.JEV_API_KEY || undefined;
 }
 
 export function validateConfig(config) {
@@ -151,6 +177,48 @@ export function validateConfig(config) {
   if (!["gates", "all", "never"].includes(config.failOn)) errors.push("failOn must be gates|all|never");
   if (!Array.isArray(config.suites) || config.suites.some((s) => typeof s !== "string")) {
     errors.push("suites must be an array of strings");
+  } else if (config.suites.length === 0) {
+    errors.push("suites must not be empty");
+  }
+  for (const k of ["timeoutMs", "maxDiffChars", "maxHunks"]) {
+    const n = config[k];
+    if (!Number.isInteger(n) || n <= 0) errors.push(`${k} must be a positive integer`);
+  }
+  if (typeof config.hunks !== "boolean") errors.push("hunks must be boolean");
+  for (const k of ["include", "exclude"]) {
+    if (!Array.isArray(config[k]) || config[k].some((g) => typeof g !== "string")) {
+      errors.push(`${k} must be an array of glob strings`);
+    }
+  }
+  if (config.model !== undefined && typeof config.model !== "string") errors.push("model must be a string");
+  if (config.baseUrl !== undefined && typeof config.baseUrl !== "string") errors.push("baseUrl must be a string");
+  if (config.provider !== undefined && !["typesafe", "vercel"].includes(config.provider)) {
+    errors.push("provider must be typesafe|vercel");
+  }
+  if (typeof config.zeroDataRetention !== "boolean") errors.push("zeroDataRetention must be boolean");
+  if (config.agent !== null && config.agent !== undefined) {
+    const a = config.agent;
+    if (!Array.isArray(a.command) || a.command.length === 0 || a.command.some((c) => typeof c !== "string")) {
+      errors.push("agent.command must be a non-empty argv array");
+    }
+    if (a.input !== undefined && !["json", "text", "none"].includes(a.input)) {
+      errors.push("agent.input must be json|text|none");
+    }
+    if (a.on !== undefined) {
+      if (!Array.isArray(a.on) || a.on.length === 0 || a.on.some((o) => !["fix_now", "advisory", "approve"].includes(o))) {
+        errors.push("agent.on must be a non-empty array of fix_now|advisory|approve");
+      }
+    }
+    if (a.timeoutMs !== undefined && (!Number.isInteger(a.timeoutMs) || a.timeoutMs <= 0)) {
+      errors.push("agent.timeoutMs must be a positive integer");
+    }
+  }
+  const seen = new Set();
+  for (const p of Array.isArray(config.prefs) ? config.prefs : []) {
+    if (typeof p?.id === "string") {
+      if (seen.has(p.id)) errors.push(`duplicate pref id ${JSON.stringify(p.id)}`);
+      seen.add(p.id);
+    }
   }
   return errors;
 }

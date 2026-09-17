@@ -1,7 +1,8 @@
 # Wiring triggers (one engine, many triggers)
 
 All triggers invoke the same binary with the same exit contract
-(0 approve/advisory, 1 gate failure, 2 infra error — never treat 2 as approval).
+(0 approve — advisory too, unless `--fail-on all`; 1 gate failure;
+2 infra error — never treat 2 as approval).
 
 ## Agent instruction file
 
@@ -32,6 +33,11 @@ npx jev-pref review --staged || exit 1
 
 Pin a version in shared setups: `npx jev-pref@0.1.0 review --staged`.
 
+Scope notes: `--staged` / `--diff` / `--pr` judge exactly that scope —
+untracked files are included only in default working-tree reviews. Use
+`--include` / `--exclude` globs to narrow any scope to the paths you care
+about.
+
 ## Agent hooks
 
 A markdown instruction is advisory — agents skip it under pressure. If the
@@ -46,6 +52,26 @@ PR diffs via the base...head range, sticky summary comment + file
 annotations, check failed iff gates fail (see `fail-on`). Needs checkout
 with `fetch-depth: 0` and `TYPESAFE_API_KEY` in secrets. Start new repos on
 the `advisory.yml` example, switch to `strict.yml` once calibrated.
+
+## Agent handoff
+
+To auto-fix or escalate instead of just reporting, configure the engine's
+`agent` block (argv array only — never a shell string; verdict via stdin):
+
+```json
+{
+  "agent": {
+    "command": ["claude", "-p", "Fix these review findings: {verdict}"],
+    "input": "json",
+    "on": ["fix_now"]
+  }
+}
+```
+
+Ask the user for: the command (bin + fixed args), what it receives (`json`
+full payload / `text` summary / `none`), and which outcomes trigger it.
+Placeholders in args are replaced literally: `{verdict} {json} {files}`
+`{outcome}`. Agent failures exit 2 (`agent-error`), never silent.
 
 ## Rules
 

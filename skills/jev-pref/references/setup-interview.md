@@ -1,4 +1,4 @@
-# Setup interview (ask before generating; max 3 questions)
+# Setup interview (ask before generating; 3 core questions + 2 optional)
 
 Run `npx jev-pref doctor` first and fix what it flags. Then ask:
 
@@ -9,12 +9,19 @@ Run `npx jev-pref doctor` first and fix what it flags. Then ask:
    the wired entry.
 3. **Wire target** — `CLAUDE.md`, `AGENTS.md`, git hooks, agent hooks, CI, or
    several? Create agent files if missing; see `references/wiring.md`.
+4. **Hunk granularity (optional)** — whole-diff (one cheap call) or `--hunks`
+   (one call per hunk, file:line verdicts for inline comments)? Default:
+   whole-diff; recommend hunks for PR review setups.
+5. **Agent handoff (optional)** — after a failing/advisory verdict, pipe it to
+   a command? E.g. `claude -p` for auto-fix, a notifier, a ticket filer.
+   Record bin + args + which outcomes trigger it. Default: none.
 
 State defaults and assumptions; do not interrogate beyond this. Thresholds
 start at 0.7 — `npx jev-pref tune` calibrates later against real verdicts.
 
 Record answers with `npx jev-pref init` (interactive) or
-`npx jev-pref init --yes --suites prefs,secrets --trigger "..." --wire both`.
+`npx jev-pref init --yes --suites prefs,secrets --trigger "..." --wire both`
+(plus `--scope staged|pr`, `--hunks`, `--agent-cmd "..."` as answered).
 
 Stacks: the engine covers TypeScript Gateway + direct paths. Effect v4
 codebases get `assets/review-script-effect.ts` (direct key only). Python /

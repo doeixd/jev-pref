@@ -36,7 +36,7 @@ Find preference sources in the target project (not this repo):
 3. Extract each preference as a separate testable bullet. Read
    `references/prefs-to-questions.md` for the mapping rules.
 
-### 3. Interview the user (max 3 questions)
+### 3. Interview the user (3 core questions + 2 optional)
 
 Run `npx jev-pref doctor` first and fix what it flags. Then ask, covering
 `references/setup-interview.md`:
@@ -44,6 +44,7 @@ Run `npx jev-pref doctor` first and fix what it flags. Then ask, covering
 - suites (`prefs`, plus built-in `secrets` gate — recommend both)
 - run trigger (after each task, before commit, on PRs — get exact wording)
 - wire target (`CLAUDE.md`, `AGENTS.md`, hooks, CI — or several)
+- hunk granularity + agent handoff (the two optional questions)
 
 State your defaults and what you assumed. Do not interrogate beyond this;
 thresholds start at 0.7 and `tune` calibrates later.
