@@ -65,7 +65,11 @@ thresholds start at 0.7 and `tune` calibrates later.
 Add the run instruction per `references/wiring.md` (agent file, git hooks,
 Claude Code hooks, or CI — same binary everywhere):
 `npx jev-pref review` (add `--staged` pre-commit, `--pr` on PRs).
+For GitHub repos, set up the PR action per `references/ci-setup.md`
+(start advisory, go strict after calibration).
 State exactly when it runs and how to act on pass / advisory / gate-failure.
+If the harness supports hooks (e.g. Claude Code `PostToolUse`), prefer those
+for enforcement — the markdown block alone is advisory and agents skip it.
 
 ### 6. Verify
 
