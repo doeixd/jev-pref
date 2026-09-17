@@ -101,12 +101,26 @@ async function untrackedContent(root, list, budget) {
 /**
  * Collect review state.
  * @param {object} opts - { ref?: string|null, staged?: boolean, maxDiffChars,
- *   include?: string[], exclude?: string[] }
+ *   include?: string[], exclude?: string[], diffText?: string }
  * ref = explicit git ref/range (allowlisted); staged = --cached only.
+ * diffText = piped-in diff (`--diff -`): skips git entirely, no repo needed.
  * Untracked files are included ONLY for working-tree scope — a --staged,
  * --diff, or --pr review judges exactly what that scope contains.
  */
-export async function collectState({ cwd = ".", ref = null, staged = false, maxDiffChars = 24000, include = [], exclude = [] } = {}) {
+export async function collectState({ cwd = ".", ref = null, staged = false, maxDiffChars = 24000, include = [], exclude = [], diffText = null } = {}) {
+  if (diffText !== null) {
+    const diff = diffText.slice(0, maxDiffChars);
+    return {
+      diff,
+      truncated: diffText.length > maxDiffChars,
+      status: "(stdin)",
+      untracked: "",
+      untrackedSections: [],
+      stat: "(stdin)",
+      branch: "(stdin)",
+      scope: "stdin",
+    };
+  }
   if (ref != null) assertSafeRef(ref);
   // Anchor at the repo root: pathspecs and untracked listings are cwd-scoped.
   // review always needs a repo — fail fast with a clear message otherwise.

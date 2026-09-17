@@ -25,10 +25,12 @@ npx jev-pref review [--diff REF] [--staged] [--pr] [--suites prefs,secrets]
                     [--config PATH] [--model M] [--base-url U]
                     [--provider typesafe|vercel] [--timeout-ms MS]
                     [--max-diff-chars N]
+# ... or pipe any diff in (no repo needed; pre-filter upstream):
+git diff HEAD~1 | npx jev-pref review --diff - [--json] [--hunks]
 npx jev-pref init [--yes] [--stack S] [--scope S] [--suites S] [--trigger T]
                   [--wire claude|agents|both|none] [--hunks] [--agent-cmd BIN]
                   [--out PATH] [--print]
-npx jev-pref tune [--sweep] [--check] [--evals-dir DIR] [--dry-run]
+npx jev-pref tune [--sweep] [--check[=N]] [--evals-dir DIR] [--dry-run]
                   [--config PATH]
 npx jev-pref doctor [--verbose] [--config PATH]
 ```
@@ -40,6 +42,7 @@ Exit codes: `0` approve/ok, `1` gate violated, `2` infra/config/usage error
 
 CLI flags > `JEV_*` env vars > `jev-pref.json` > fenced ` ```jev-prefs ` block
 in `CLAUDE.md`/`AGENTS.md` > built-ins. See `schema.json` for the full shape.
+Unknown keys are dropped (typo safety) — `doctor --verbose` lists them.
 
 | Env | Meaning |
 | --- | --- |
@@ -85,7 +88,9 @@ a notifier, a ticket filer):
 
 - `command` is an argv array (bin first) — never a shell string, so diff
   content cannot inject. Placeholders in any entry are replaced literally:
-  `{verdict}` human text, `{json}` full payload, `{files}` csv, `{outcome}`.
+  `{verdict}` human text, `{json}` verdict JSON, `{files}` csv, `{outcome}`.
+  (`{json}` omits the diff — argv has OS length limits; stdin always carries
+  the full payload including the diff.)
 - `input`: `json` (default, full payload on stdin), `text`, or `none`.
 - `on`: which outcomes trigger it (`fix_now` default; add `advisory` to
   escalate notes too). Failures exit 2 (`agent-error`), never silent.
@@ -99,6 +104,7 @@ a notifier, a ticket filer):
 
 `evals/*.json`: `{ name, diff, expected: { prefId: true|false } }`.
 `tune --sweep` reports accuracy per threshold and proposes a config diff.
+`tune --check` (or `--check=0.8`) fails below the accuracy bar — for CI.
 
 ## Jev client
 

@@ -80,22 +80,29 @@ export function extractFencedBlock(markdown) {
   if (!m) return undefined;
   try {
     return JSON.parse(m[1]);
-  } catch {
-    return undefined;
+  } catch (e) {
+    throw new Error(`invalid JSON in \`\`\`jev-prefs block: ${e?.message ?? String(e)}`);
   }
 }
 
 async function readFencedBlock(rootDir) {
   for (const name of ["CLAUDE.md", "AGENTS.md"]) {
+    let text;
     try {
-      const text = await readFile(join(rootDir, name), "utf8");
-      const block = extractFencedBlock(text);
-      if (block) return block;
+      text = await readFile(join(rootDir, name), "utf8");
     } catch {
-      // Missing/unreadable — try the next file.
+      continue; // Missing/unreadable — try the next file.
+    }
+    if (!text.includes("```jev-prefs")) continue; // No block — try next file.
+    // Present-but-broken fails loud (same philosophy as jev-pref.json):
+    // a typo'd block must never silently become defaults.
+    try {
+      return { block: extractFencedBlock(text) ?? {}, file: name };
+    } catch (e) {
+      throw new Error(`${join(rootDir, name)}: ${e.message}`);
     }
   }
-  return undefined;
+  return { block: {}, file: null };
 }
 
 function pick(obj, keys) {
@@ -110,9 +117,12 @@ const KNOWN_KEYS = Object.keys(DEFAULTS);
 
 /**
  * Merge, in increasing precedence: defaults < fenced < json < env < flags.
- * Unknown keys are dropped (typo safety). Returns { config, sources } where
- * sources notes which layer provided each key (for `doctor --verbose`).
- * A malformed jev-pref.json is a hard error (exit 2), never silent defaults.
+ * Unknown keys are dropped (typo safety) and reported in `ignored` as
+ * { layer: [keys] } — `doctor --verbose` surfaces them. `$schema` is always
+ * allowed silently (editors use it; it is not a setting).
+ * Returns { config, sources, ignored, configPath }.
+ * A malformed jev-pref.json or fenced block is a hard error (exit 2),
+ * never silent defaults.
  */
 export async function resolveConfig({ rootDir = ".", flags = {} } = {}) {
   const env = readEnv();
@@ -130,7 +140,7 @@ export async function resolveConfig({ rootDir = ".", flags = {} } = {}) {
   } else if (!isDefaultPath) {
     throw new Error(`config not found: ${configPath}`);
   }
-  const fenced = (await readFencedBlock(rootDir)) ?? {};
+  const { block: fenced, file: fencedFile } = await readFencedBlock(rootDir);
 
   const layers = [
     { name: "defaults", values: DEFAULTS },
@@ -147,7 +157,11 @@ export async function resolveConfig({ rootDir = ".", flags = {} } = {}) {
       sources[k] = name;
     }
   }
-  return { config, sources, configPath };
+  const ignored = {
+    fenced: Object.keys(fenced).filter((k) => !KNOWN_KEYS.includes(k) && k !== "$schema"),
+    json: Object.keys(json).filter((k) => !KNOWN_KEYS.includes(k) && k !== "$schema"),
+  };
+  return { config, sources, ignored, configPath, fencedFile };
 }
 
 /** API key resolution is env-only by design (never flags, never files). */

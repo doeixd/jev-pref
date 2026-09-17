@@ -71,7 +71,8 @@ To auto-fix or escalate instead of just reporting, configure the engine's
 Ask the user for: the command (bin + fixed args), what it receives (`json`
 full payload / `text` summary / `none`), and which outcomes trigger it.
 Placeholders in args are replaced literally: `{verdict} {json} {files}`
-`{outcome}`. Agent failures exit 2 (`agent-error`), never silent.
+`{outcome}` (`{json}` omits the diff — argv has OS limits; stdin carries the
+full payload). Agent failures exit 2 (`agent-error`), never silent.
 
 ## Rules
 

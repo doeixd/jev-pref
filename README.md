@@ -67,17 +67,23 @@ jev-pref/
 ├── skills/                    # <-- installable skills live here
 │   └── jev-pref/
 │       ├── SKILL.md           # required: name + description + instructions
-│       ├── references/        # jev-essentials, prefs-to-questions, interview, wiring, effect-stack
+│       ├── references/        # jev-essentials, prefs-to-questions, interview, wiring, effect-stack, ci-setup
 │       └── assets/            # review-script-template.mjs + effect.ts + CLAUDE.md snippet
 ├── packages/
 │   └── jev-pref/              # <-- npm engine: npx jev-pref review|init|tune|doctor
+│       ├── src/               # cli, commands, suites, git/hunks/agent/jev plumbing
+│       ├── test/              # node:test unit suites (npm test)
+│       └── evals/             # sample labeled cases for tune
+├── actions/
+│   └── review/                # <-- reusable GitHub Action + examples
 ├── templates/
 │   └── skill-template/        # starter copy-paste template (not installed)
 │       └── SKILL.md
 ├── scripts/
 │   └── validate-skills.mjs    # checks frontmatter + layout
 └── .github/workflows/
-    └── validate.yml
+    ├── validate.yml           # skills check + engine tests + doctor + tune dry-run
+    └── jev-review.yml         # dogfood: PR review on master
 ```
 
 ## Add a new skill
@@ -105,18 +111,16 @@ npx skills add ./ --list
 
 ## API keys and environment
 
-No PATH changes needed — just Node 20+ and `npx`. The generated review script
-reads keys from the environment only (never committed):
+No PATH changes needed — just Node 20+ and `npx`. The engine reads keys from
+the environment only (never committed), in this order:
 
-| Variable | Used when | Get it |
-| --- | --- | --- |
-| `AI_GATEWAY_API_KEY` | Default path (Vercel AI Gateway, model `typesafe-ai/jev`) | `npx vercel ai-gateway setup` |
-| `TYPESAFE_API_KEY` | Fallback direct path (model `jev-latest`) | https://console.typesafe.ai |
+1. `JEV_API_KEY` — explicit override, wins over everything.
+2. `TYPESAFE_API_KEY` — direct TypeSafe path (model `jev-latest`).
+3. `AI_GATEWAY_API_KEY` — Vercel AI Gateway (model `typesafe-ai/jev`).
+4. `VERCEL_OIDC_TOKEN` — Gateway via OIDC on Vercel deployments.
 
 Copy `.env.example` to `.env` for local runs (loaded by your shell, never by
-the script — the script reads `process.env` directly). The template picks
-Gateway when `AI_GATEWAY_API_KEY` is set, otherwise direct when
-`TYPESAFE_API_KEY` is set, otherwise exits 2 with a setup error.
+the script — the script reads `process.env` directly).
 
 ## Validation
 

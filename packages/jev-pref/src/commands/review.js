@@ -28,16 +28,34 @@ async function prBase(cwd) {
       timeout: 15000,
     });
     base = stdout.trim();
-  } catch {
-    return null;
+  } catch (e) {
+    if (e?.code === "ENOENT") throw new GitError("gh", "review --pr needs the gh CLI (not found on PATH)");
+    throw new GitError("gh pr view", "review --pr needs an open PR (gh pr view found none)");
   }
-  if (!base) return null;
+  if (!base) throw new GitError("gh pr view", "review --pr needs an open PR (gh pr view found none)");
   try {
     await execFile("git", ["rev-parse", "--verify", `origin/${base}`], { cwd, encoding: "utf8", timeout: 15000 });
     return `origin/${base}...HEAD`;
   } catch {
     return `${base}...HEAD`;
   }
+}
+
+/** Read a piped diff for `--diff -`. Null = usage error (already reported). */
+async function readStdinDiff(out, { stdin = process.stdin } = {}) {
+  if (stdin.isTTY) {
+    out.error("review-error: --diff - needs piped input (stdin is a terminal)");
+    return null;
+  }
+  const chunks = [];
+  let bytes = 0;
+  const CAP = 10 * 1024 * 1024;
+  for await (const chunk of stdin) {
+    chunks.push(chunk);
+    bytes += chunk.length;
+    if (bytes > CAP) break; // collectState truncates to maxDiffChars anyway
+  }
+  return Buffer.concat(chunks).toString("utf8");
 }
 
 function suiteQuestions(config) {
@@ -73,12 +91,8 @@ function renderVerdict(suiteVerdicts, scope = "") {
     for (const f of [...v.failures, ...v.notes]) lines.push(`- ${tag}[${v.suite}] ${f}`);
   }
   const head = `${tag}${worst} (suites: ${suiteVerdicts.map((v) => `${v.suite}=${v.outcome}`).join(", ")})`;
-  if (worst === "approve") return { worst, text: head };
-  return { worst, text: lines.length > 0 ? `${head}\n${lines.join("\n")}` : `${head}\n- minor notes` };
-}
-
-function csvFlag(flags, name) {
-  return listFlag(flags, name);
+  if (worst === "approve") return head;
+  return lines.length > 0 ? `${head}\n${lines.join("\n")}` : `${head}\n- minor notes`;
 }
 
 function resolveAgent(flags, config) {
@@ -92,8 +106,9 @@ function resolveAgent(flags, config) {
     if (!["json", "text", "none"].includes(input)) {
       throw new InvalidArgs(`--agent-input must be json|text|none, got ${JSON.stringify(input)}`);
     }
-    const on = (strFlag(flags, "agent-on") ?? process.env.JEV_AGENT_ON ?? "fix_now")
-      .split(",").map((s) => s.trim()).filter(Boolean);
+    const onEnv = process.env.JEV_AGENT_ON;
+    const on = listFlag(flags, "agent-on")
+      ?? (onEnv !== undefined ? onEnv.split(",").map((s) => s.trim()).filter(Boolean) : ["fix_now"]);
     if (on.length === 0 || on.some((o) => !["fix_now", "advisory", "approve"].includes(o))) {
       throw new InvalidArgs("--agent-on must be a non-empty csv of fix_now|advisory|approve");
     }
@@ -149,12 +164,10 @@ export async function review(argv, { cwd = ".", out = console } = {}) {
   // One resolution pass: defaults < fenced < json < env < flags.
   const configFlag = strFlag(flags, "config");
   const overrides = {};
-  const suitesCsv = csvFlag(flags, "suites");
-  if (suitesCsv !== undefined) overrides.suites = suitesCsv;
-  const include = csvFlag(flags, "include");
-  if (include !== undefined) overrides.include = include;
-  const exclude = csvFlag(flags, "exclude");
-  if (exclude !== undefined) overrides.exclude = exclude;
+  for (const [flag, key] of [["suites", "suites"], ["include", "include"], ["exclude", "exclude"]]) {
+    const list = listFlag(flags, flag);
+    if (list !== undefined) overrides[key] = list;
+  }
   for (const [flag, key] of [
     ["gate-threshold", "gateThreshold"],
     ["advisory-threshold", "advisoryThreshold"],
@@ -210,14 +223,25 @@ export async function review(argv, { cwd = ".", out = console } = {}) {
     return 2;
   }
 
-  let ref = diffFlag ?? null;
+  let ref = diffFlag && diffFlag !== "-" ? diffFlag : null;
+  let stdinDiff = null;
+  if (diffFlag === "-") {
+    // Piped diff: no repo needed, no git invoked. Pre-filter upstream
+    // (git diff -- src/ | jev-pref review --diff -); --include/--exclude
+    // apply to git scopes only.
+    stdinDiff = await readStdinDiff(out);
+    if (stdinDiff === null) return 2;
+  }
   if (usePr) {
-    const base = await prBase(cwd);
-    if (!base) {
-      out.error("review-error: --pr needs an open PR (gh pr view found none)");
-      return 2;
+    try {
+      ref = await prBase(cwd);
+    } catch (e) {
+      if (e instanceof GitError) {
+        out.error(`review-error: ${e.message}`);
+        return 2;
+      }
+      throw e;
     }
-    ref = base;
   }
 
   let gs;
@@ -229,6 +253,7 @@ export async function review(argv, { cwd = ".", out = console } = {}) {
       maxDiffChars: config.maxDiffChars,
       include: config.include,
       exclude: config.exclude,
+      diffText: stdinDiff,
     });
   } catch (e) {
     if (e instanceof UnsafeRefError || e instanceof GitError) {
@@ -351,7 +376,7 @@ export async function review(argv, { cwd = ".", out = console } = {}) {
   let text;
   let payload;
   if (scopeResults.length === 1 && !scopeResults[0].label) {
-    ({ text } = renderVerdict(scopeResults[0].suiteVerdicts));
+    text = renderVerdict(scopeResults[0].suiteVerdicts);
     payload = { outcome: overall, suites: scopeResults[0].suiteVerdicts, files: [] };
   } else {
     const blocks = scopeResults.map((s) => renderVerdict(s.suiteVerdicts, s.label));

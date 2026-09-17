@@ -7,6 +7,10 @@ Usage: jev-pref review [options]
 Scope (default: working tree vs HEAD; mutually exclusive):
   --diff REF        git ref or range (e.g. HEAD~1, main...HEAD). Allowlisted
                     [A-Za-z0-9_.~/:{}^-]; must not start with '-'.
+  --diff -          read the diff from stdin (no repo needed):
+                    git diff HEAD~1 | jev-pref review --diff -
+                    Pre-filter upstream (git diff -- src/ | ...); --include /
+                    --exclude apply to git scopes only.
   --staged          review staged changes only (pre-commit). Untracked files
                     are NOT included in --staged / --diff / --pr scope.
   --pr              base...HEAD of the current PR via 'gh pr view' (needs gh).
@@ -32,6 +36,9 @@ Suites & thresholds:
 Agent handoff (verdict piped to your command, argv only — never a shell):
   --agent-cmd BIN          e.g. --agent-cmd "claude -p" (whitespace-split;
                            prefer config array form for exact args).
+                           Placeholders in args: {verdict} {json} {files}
+                           {outcome} ({json} omits the diff — argv has OS
+                           limits; stdin always carries the full payload).
   --agent-input json|text|none   stdin payload (default json).
   --agent-on LIST          csv outcomes that trigger it (default fix_now).
   --agent-timeout-ms MS    handoff timeout (default 300000).
@@ -72,14 +79,14 @@ Exit codes: 0 wrote/printed, 2 bad answers/usage error.
 
 const TUNE = `jev-pref tune — calibrate thresholds against labeled evals
 
-Usage: jev-pref tune [--sweep] [--check] [--evals-dir DIR] [--dry-run]
+Usage: jev-pref tune [--sweep] [--check[=N]] [--evals-dir DIR] [--dry-run]
        [--config PATH]
 
   evals/*.json: { name, diff, expected: { prefId: true|false } }.
   (default dir ./evals; --evals-dir overrides.)
   --sweep           try thresholds 0.5..0.9, propose the best as a config diff.
-  --check           fail (exit 1) if accuracy @ gateThreshold is below 50%.
-                    For CI gates on calibrated suites.
+  --check           fail (exit 1) if accuracy @ gateThreshold is below the bar
+                    (0.5 bare; --check=0.8 to set it). For CI gates.
   --dry-run         list runnable cases without calling Jev (free).
   --config PATH     config file (default ./jev-pref.json).
 

@@ -6,6 +6,7 @@
 import { execFile as execFileCb } from "node:child_process";
 import { appendFile, readFile, writeFile } from "node:fs/promises";
 import { promisify } from "node:util";
+import { pathToFileURL } from "node:url";
 
 const execFile = promisify(execFileCb);
 const MARKER = "<!-- jev-pref-review -->";
@@ -79,7 +80,13 @@ function commentBody({ outcome, suites, base, head, runUrl }) {
     lines.push("", "</details>", "");
   }
   if (runUrl) lines.push(`<sub>Full log: [workflow run](${runUrl}) · gate failures block merge per \`fail-on\`.</sub>`);
-  return lines.join("\n");
+  let body = lines.join("\n");
+  // GitHub issue comments cap at 65536 chars — truncate verdict lists, never
+  // the header, and point at the log for the rest.
+  if (body.length > 60000) {
+    body = `${body.slice(0, 60000)}\n\n_(truncated: full verdict in the workflow log)_`;
+  }
+  return body;
 }
 
 async function upsertComment({ repo, number, token, body }) {
@@ -286,12 +293,25 @@ async function main() {
   return 0;
 }
 
-try {
-  process.exitCode = await main();
-} catch (e) {
-  errOut(`review-error: ${e?.message ?? String(e)}`);
+// Importable for unit tests (node --test); runs only when executed directly.
+export { globToRegExp, splitList, matchesAny, commentBody, normalizeVerdict };
+
+const invokedDirectly = (() => {
   try {
-    await emitOutput("outcome", "error");
-  } catch { /* ignore */ }
-  process.exitCode = 2;
+    return !!process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href;
+  } catch {
+    return false;
+  }
+})();
+
+if (invokedDirectly) {
+  try {
+    process.exitCode = await main();
+  } catch (e) {
+    errOut(`review-error: ${e?.message ?? String(e)}`);
+    try {
+      await emitOutput("outcome", "error");
+    } catch { /* ignore */ }
+    process.exitCode = 2;
+  }
 }

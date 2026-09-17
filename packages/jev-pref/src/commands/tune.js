@@ -1,12 +1,12 @@
 // `jev-pref tune` — v1: run evals/ labeled cases at the configured thresholds
 // and report per-pref accuracy; --sweep tries thresholds {0.5..0.9} and
 // proposes the best per-pref values as a config diff (asks nothing — the
-// agent/user applies it); --check fails (exit 1) below the 50% accuracy bar
-// for CI gates. Needs a live key (like review); --dry-run prints what would
-// run. Honors --config.
+// agent/user applies it); --check fails (exit 1) below the accuracy bar
+// (0.5 bare, --check=N to set it) for CI gates. Needs a live key (like
+// review); --dry-run prints what would run. Honors --config.
 import { readdir, readFile } from "node:fs/promises";
 import { join } from "node:path";
-import { boolFlag, strFlag } from "../args.js";
+import { boolFlag, InvalidArgs, strFlag } from "../args.js";
 import { resolveApiKey, resolveConfig, validateConfig } from "../config.js";
 import { evaluate } from "../jev.js";
 import { buildQuestions } from "../suites/prefs.js";
@@ -32,11 +32,23 @@ async function loadEvals(dir) {
   return out;
 }
 
+/** --check bar: bare flag = 0.5, --check=0.8 (or --check 0.8) overrides. */
+function checkBar(flags) {
+  const v = flags.check;
+  if (v === undefined) return null;
+  if (v === true) return 0.5;
+  const n = Number(v);
+  if (!Number.isFinite(n) || n < 0 || n > 1) {
+    throw new InvalidArgs(`--check must be within [0, 1], got ${JSON.stringify(v)}`);
+  }
+  return n;
+}
+
 export async function tune(argv, { cwd = ".", out = console } = {}) {
   const { flags } = argv;
   const dryRun = boolFlag(flags, "dry-run");
   const sweep = boolFlag(flags, "sweep");
-  const check = boolFlag(flags, "check");
+  const check = checkBar(flags);
   const evalsDir = strFlag(flags, "evals-dir") ?? join(cwd, "evals");
 
   let config;
@@ -109,8 +121,8 @@ export async function tune(argv, { cwd = ".", out = console } = {}) {
 
   const current = accuracy(config.gateThreshold);
   out.log(`accuracy @ gateThreshold=${config.gateThreshold}: ${current === null ? "n/a (no labeled prefs)" : `${(current * 100).toFixed(1)}% over ${cases.length} cases`}`);
-  if (check && (current === null || current < 0.5)) {
-    out.error(`review-error: tune --check failed: accuracy ${current === null ? "n/a" : `${(current * 100).toFixed(1)}%`} below 50% bar`);
+  if (check !== null && (current === null || current < check)) {
+    out.error(`review-error: tune --check failed: accuracy ${current === null ? "n/a" : `${(current * 100).toFixed(1)}%`} below ${(check * 100).toFixed(0)}% bar`);
     return 1;
   }
   if (!sweep) return 0;

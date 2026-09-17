@@ -18,10 +18,12 @@ export class AgentError extends Error {
 /**
  * @param {object} opts
  * @param {string[]} opts.command - argv array, bin first. Placeholders in any
- *   entry are replaced literally: {verdict} human text, {json} verdict JSON,
- *   {files} csv, {outcome}.
- * @param {"json"|"text"|"none"} opts.input - stdin payload (default json).
- * @param {object} opts.payload - { verdict, outcome, suites, diff, files, ... }
+ *   entry are replaced literally: {verdict} human text, {json} verdict JSON
+ *   (without the diff — argv has OS length limits; the full payload including
+ *   the diff travels via stdin), {files} csv, {outcome}.
+ * @param {"json"|"text"|"none"} opts.input - stdin payload (default json,
+ *   always the FULL payload including diff).
+ * @param {object} opts.payload - { text, outcome, suites|hunks, diff, files }
  * @param {number} opts.timeoutMs
  * @param {{log,error}} opts.out
  * @returns {Promise<{code:number, stdout:string}>}
@@ -31,7 +33,11 @@ export async function runAgent({ command, input = "json", payload, timeoutMs = 3
     throw new AgentError("agent.command must be a non-empty argv array");
   }
   const human = payload.text ?? JSON.stringify(payload.verdict ?? payload);
-  const json = JSON.stringify(payload);
+  // Slim copy for argv substitution: the diff can be tens of KB and argv has
+  // OS length limits (E2BIG). Stdin always carries the complete payload.
+  const { diff: _omitted, ...slim } = payload;
+  const json = JSON.stringify(slim);
+  const fullJson = JSON.stringify(payload);
   const files = (payload.files ?? []).join(",");
   const sub = (s) =>
     String(s).split("{verdict}").join(human).split("{json}").join(json)
@@ -39,7 +45,7 @@ export async function runAgent({ command, input = "json", payload, timeoutMs = 3
   const argv = command.slice(1).map(sub);
 
   let stdin;
-  if (input === "json") stdin = json;
+  if (input === "json") stdin = fullJson;
   else if (input === "text") stdin = `${human}\n\nfiles: ${files}`;
   else if (input === "none") stdin = undefined;
   else throw new AgentError(`agent.input must be json|text|none, got ${JSON.stringify(input)}`);

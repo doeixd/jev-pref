@@ -55,7 +55,7 @@ export async function doctor(argv, { cwd = ".", out = console } = {}) {
     push("config valid", errors.length === 0, errors.join("; "));
     if (verbose) {
       // Re-resolve for sources (cheap, local IO only).
-      const { sources } = await resolveConfig({
+      const { sources, ignored, fencedFile } = await resolveConfig({
         rootDir: cwd,
         flags: configFlag !== undefined ? { config: configFlag } : {},
       });
@@ -64,6 +64,10 @@ export async function doctor(argv, { cwd = ".", out = console } = {}) {
         push(`config.${k} <= ${sources[k] ?? "?"}`, true, JSON.stringify(v));
       }
       push("prefs count", true, `${config.prefs.length} [${config.prefs.map((p) => `${p.id}:${p.gate ? "gate" : "adv"}`).join(", ")}]`);
+      if (fencedFile) push("fenced block", true, `from ${fencedFile}`);
+      for (const [layer, keys] of Object.entries(ignored)) {
+        if (keys.length > 0) push(`ignored unknown ${layer} keys`, true, `${keys.join(", ")} (typo?)`, true);
+      }
     }
   }
 

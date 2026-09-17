@@ -50,7 +50,6 @@ export function splitHunks(diff) {
         start: Number(m[1]),
         count: m[2] === undefined ? 1 : Number(m[2]),
         header: `${header}\n${line}`.trim(),
-        context: (m[3] ?? "").trim(),
         lines: [line],
       };
       continue;

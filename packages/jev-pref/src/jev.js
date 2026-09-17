@@ -21,14 +21,7 @@ export class JevOverloadedError extends JevError {
 
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 
-export function backoffMs(attempt, retryAfter) {
-  if (retryAfter != null && retryAfter !== "") {
-    const secs = Number(retryAfter);
-    if (Number.isFinite(secs) && secs >= 0) return Math.min(secs * 1000, 30000);
-    // HTTP-date form — best effort, else fall through to exponential.
-    const when = Date.parse(retryAfter);
-    if (Number.isFinite(when)) return Math.min(Math.max(when - Date.now(), 0), 30000);
-  }
+export function backoffMs(attempt) {
   return Math.min(500 * 2 ** attempt, 30000);
 }
 

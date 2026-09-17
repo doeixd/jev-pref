@@ -41,7 +41,8 @@ export function parseArgs(argv) {
         const key = a.slice(2);
         if (!key) throw new InvalidArgs(`bad flag ${JSON.stringify(a)}`);
         const next = argv[i + 1];
-        if (next !== undefined && !next.startsWith("-")) {
+        // A lone "-" is a value (stdin convention), never a flag.
+        if (next !== undefined && (!next.startsWith("-") || next === "-")) {
           add(key, next);
           i++;
         } else {
