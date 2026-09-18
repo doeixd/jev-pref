@@ -1,6 +1,6 @@
 # jev-pref
 
-<video src="https://raw.githubusercontent.com/doeixd/jev-pref/master/explainer/media/jev-pref-explainer-revised-fast.mp4" controls muted playsinline width="100%"></video>
+[![Watch the Jev-pref explainer](./explainer/media/jev-pref-explainer-poster.png)](https://raw.githubusercontent.com/doeixd/jev-pref/master/explainer/media/jev-pref-explainer-revised-fast.mp4)
 
 **Turn your preferences from AGENTS.md into a fast, Jev-powered AI linter.**
 
