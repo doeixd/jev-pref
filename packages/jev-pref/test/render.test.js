@@ -26,4 +26,14 @@ describe("renderVerdict", () => {
     assert.match(text, /\[b\.ts:5-6\]/);
     assert.ok(!text.includes("undefined"));
   });
+
+  it("renders fixed classifications even when their mapped outcome approves", () => {
+    const verdict = [{
+      suite: "prefs", outcome: "approve", failures: [], notes: [],
+      classifications: [{ id: "api_change", label: "additive", probability: 0.9, confidence: 0.8, outcome: "approve" }],
+    }];
+    const text = renderVerdict(verdict);
+    assert.match(text, /api_change=additive/);
+    assert.match(text, /confidence=0\.80 -> approve/);
+  });
 });

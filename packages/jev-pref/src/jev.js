@@ -2,6 +2,9 @@
 // Keeps our own retry (advocaat does none) + timeout signal + error mapping
 // to the 0/1/2 contract. Answer fields: noul→chance, score→score, choice→choice.
 import { APIError, ask } from "advocaat";
+import { JEV_INPUT_TOKEN_LIMIT, SAFE_SERIALIZED_INPUT_CHARS, serializedInputChars } from "./budget.js";
+
+export { JEV_INPUT_TOKEN_LIMIT, SAFE_SERIALIZED_INPUT_CHARS } from "./budget.js";
 
 export class JevError extends Error {
   constructor(message, { status = 0, body = "" } = {}) {
@@ -34,6 +37,13 @@ export function backoffMs(attempt) {
  * @param {number} opts.maxRetries (overload retries only; default 5)
  */
 export async function evaluate({ state, questions, client = {}, timeoutMs = 60000, maxRetries = 5 }) {
+  const serializedChars = serializedInputChars(state, questions);
+  if (serializedChars > SAFE_SERIALIZED_INPUT_CHARS) {
+    throw new JevError(
+      `planned input is ${serializedChars} characters before tokenization; ` +
+      `Jev accepts at most ${JEV_INPUT_TOKEN_LIMIT} input tokens. Review a smaller scope.`,
+    );
+  }
   const options = {};
   if (client.apiKey) options.apiKey = client.apiKey;
   if (client.baseURL) options.baseURL = client.baseURL;

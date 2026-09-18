@@ -17,9 +17,14 @@ Scope (default: working tree vs HEAD; mutually exclusive):
 
 Granularity:
   --hunks           one Jev call per hunk/new-file (file:line verdicts).
-                    Default whole-diff (one call). JEV_HUNKS=1 also enables.
+                    Recommended for agent work. JEV_HUNKS=1 also enables.
   --no-hunks        force whole-diff even if config sets hunks:true.
-  --max-hunks N     cap hunk scopes before whole-diff fallback (default 10).
+  --files           one bounded Jev call per changed file/new file.
+                    JEV_FILES=1 also enables. Mutually exclusive with --hunks.
+  --no-files        disable file mode set by config/environment.
+  --max-hunks N     maximum scoped calls (hunks, files, or split parts;
+                    default 10). Overflow fails with guidance to narrow scope;
+                    it never falls back to an oversized whole-diff request.
 
 Filter:
   --include G       only paths matching glob G (repeatable, comma-separated).
@@ -29,7 +34,6 @@ Suites & thresholds:
   --suites a,b      csv subset (known: prefs, secrets). Default from config.
   --gate-threshold N       P cutoff for gate prefs / secrets (0..1).
   --advisory-threshold N   P cutoff for advisory prefs (0..1).
-  --severity-fail N        drift score that forces fix_now (>= 0).
   --fail-on gates|all|never   gates: exit 1 only on fix_now (default).
                               all: exit 1 on advisory too. never: always 0.
 
@@ -44,10 +48,12 @@ Agent handoff (verdict piped to your command, argv only — never a shell):
   --agent-timeout-ms MS    handoff timeout (default 300000).
 
 Client:
-  --config PATH     config file (default ./jev-pref.json, walking up to the
-                    git root). JEV_CONFIG also.
+  --config PATH     project config (default jev-pref.json, walking up to the
+                    git root). A companion jev-pref.local.json loads after it.
+                    JEV_CONFIG also.
   --model M --base-url U --provider typesafe|vercel --timeout-ms MS
-  --max-diff-chars N       diff budget before truncation note (default 24000).
+  --max-diff-chars N       per-request diff budget (default 20000). Whole-diff
+                           overflow fails; scoped modes split oversized units.
 
 Output:
   --json            machine-readable verdict on stdout (progress goes to
@@ -55,34 +61,49 @@ Output:
   --dry-run, -n     print questions/state without calling Jev (free).
 
 Exit codes: 0 approve/ok, 1 gate violated, 2 config/infra/usage error.
+Jev accepts at most 30k input tokens. Prefer small changes, --hunks, --files,
+or --include/--exclude. Partial/truncated diffs are never treated as approval.
 Keys are env-only: JEV_API_KEY, else TYPESAFE_API_KEY → AI_GATEWAY_API_KEY
 → VERCEL_OIDC_TOKEN (advocaat cascade). Never committed.
 `;
 
-const INIT = `jev-pref init — interview-to-config writer for the skill's setup flow
+const SETUP = `jev-pref setup — teach a coding agent how to configure jev-pref
 
-Usage: jev-pref init [--yes] [options]
+Usage: jev-pref setup
 
-  Interactive (a terminal): guided wizard — every question explains itself,
-  bad enums re-ask, then a preview asks to proceed before anything is written.
-  Piped (init < answers.txt): one answer per line, wizard order; flags
-  (--wire, --out, --hunks, --agent-cmd) skip their questions. Truncated
-  input fails fast instead of hanging.
-  --yes             non-interactive defaults (for CI / confirmed answers).
-  --stack S         gateway|direct|effect|python|cli (default gateway).
-  --scope S         working-tree|staged|pr (controls the wired review command).
-  --suites S        csv suites (default prefs).
-  --trigger T       when review runs, in your words (default "after every task").
-  --wire W          claude|agents|both|none — which agent files to append
-                    the fenced block + run instruction to (default both).
-  --hunks           write hunks:true into the config (per-hunk review).
-  --agent-cmd BIN   write an agent handoff block (whitespace-split command).
-  --out PATH        config path (default ./jev-pref.json).
-  --print           print the fenced block to stdout instead of writing files.
-  --force           overwrite an existing config even if it has prefs
-                    (default: refuse — merge by hand instead).
+Inspects high-signal repository files and prints a repository-aware setup
+protocol. It does not interview the user or write files; the coding agent
+follows the protocol, asks the user, and edits the repository.
 
-Exit codes: 0 wrote/printed, 2 bad answers/usage error.
+Exit codes: 0 instructions printed, 2 usage error.
+`;
+
+const SYNC = `jev-pref sync — reconcile project guidance and Jev preferences
+
+Usage: jev-pref sync
+
+Prints a repository-aware protocol for checking bidirectional semantic drift
+between human-readable project guidance, shared/personal Jev policy, and review
+wiring. It never edits files or makes policy decisions itself.
+
+Exit codes: 0 instructions printed, 2 usage error.
+`;
+
+const INIT = `jev-pref init — deprecated
+
+Agent-assisted setup replaces the interactive initializer. Run:
+
+  npx jev-pref setup
+
+No files are changed by this compatibility alias.
+`;
+
+const EXAMPLES = `jev-pref examples — print copyable integration recipes
+
+Usage: jev-pref examples [agent-loop|pre-commit|github-action|review-script]
+
+With no name, lists the available recipes. Recipes demonstrate the CLI and
+JSON/exit-code contract without creating files.
 `;
 
 const TUNE = `jev-pref tune — calibrate thresholds against labeled evals
@@ -90,14 +111,15 @@ const TUNE = `jev-pref tune — calibrate thresholds against labeled evals
 Usage: jev-pref tune [--sweep] [--check[=N]] [--evals-dir DIR] [--dry-run]
        [--config PATH]
 
-  evals/*.json: { name, diff, expected: { prefId: true|false } }.
+  evals/*.json: condition expected values are true|false; choice expected
+                values are configured label strings.
   (default dir ./evals; --evals-dir overrides.)
   --sweep           try thresholds 0.5..0.9, propose the best as a config diff.
   --check           fail (exit 1) if accuracy @ gateThreshold is below the bar
                     (0.5 bare; --check=0.8 to set it). For CI gates.
   --dry-run         list runnable cases without calling Jev (free).
-  --config PATH     config file (default ./jev-pref.json, walking up to the
-                    git root).
+  --config PATH     project config (default jev-pref.json, walking up to the
+                    git root); a companion jev-pref.local.json loads after it.
 
 Needs a live key (same cascade as review). Exit codes: 0 ok, 1 --check
 below bar, 2 config/infra/usage error.
@@ -107,13 +129,18 @@ const DOCTOR = `jev-pref doctor — environment sanity check
 
 Usage: jev-pref doctor [--verbose] [--config PATH]
 
-Checks node >= 20, git, config validity; reports (never prints) key
-presence and gh availability. gh is advisory-only (needed just for --pr).
+Checks node >= 20, git, merged project/local config validity; reports (never
+prints) key presence and gh availability. --verbose shows config provenance.
+gh is advisory-only (needed just for --pr).
 Exit codes: 0 all required checks pass, 2 something needs fixing.
 `;
 
 export function commandHelp(cmd) {
   switch (cmd) {
+    case "setup":
+      return SETUP;
+    case "sync":
+      return SYNC;
     case "review":
       return REVIEW;
     case "init":
@@ -122,6 +149,8 @@ export function commandHelp(cmd) {
       return TUNE;
     case "doctor":
       return DOCTOR;
+    case "examples":
+      return EXAMPLES;
     default:
       return `unknown command ${JSON.stringify(cmd)} (see: jev-pref help)`;
   }

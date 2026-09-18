@@ -1,192 +1,804 @@
 # jev-pref
 
-Turn your `CLAUDE.md` / `AGENTS.md` preferences into a reviewer that actually
-runs: [Jev](https://docs.typesafe.ai) (TypeSafe's evaluation model) judges
-every diff against your prefs — gates fail the build, advisories note nits,
-secrets never slip through. One setup, enforced everywhere: agent sessions,
-git hooks, and PR checks all call the same binary with the same exit contract
-(`0` approve, `1` gate violated, `2` setup error — never treat 2 as approval).
+**Turn your AGENTS.md preferences into a fast, Jev-powered AI linter.**
 
-Agent skills installable with [skills.sh](https://skills.sh) via the [`skills` CLI](https://github.com/vercel-labs/skills).
+`jev-pref` lets you define project-specific semantic rules, run them against
+code changes with [Jev](https://docs.typesafe.ai), and feed the results back to
+your coding agent.
 
-[![skills.sh](https://skills.sh/b/doeixd/jev-pref)](https://skills.sh/doeixd/jev-pref)
+Think:
 
-## Quickstart (60 seconds)
+```text
+TypeScript  → type invariants
+ESLint      → syntax and static rules
+tests       → behavioral invariants
+jev-pref    → semantic project rules
+```
+
+Instead of asking an AI:
+
+> Is this code good?
+
+you define what matters:
+
+> Does this change introduce shared mutable state?
+
+> Does this change add a second representation of an existing domain concept?
+
+> Does this public API remove or rename an existing export?
+
+> Classify this API change as none, additive, behavioral, or breaking.
+
+Jev evaluates those questions against the change. `jev-pref` applies
+project-defined thresholds and outcomes to produce structured findings. Your
+coding agent can use those findings to improve the implementation.
+
+## Quick start
+
+Tell your coding agent:
+
+```text
+Run `npx jev-pref setup` and follow the instructions it prints.
+```
+
+That's it.
+
+`setup` inspects the repository and teaches the agent how to configure
+`jev-pref`. The agent explains the system, asks you a few questions, helps
+translate your preferences into useful semantic checks, and adds persistent
+instructions to `AGENTS.md`, `CLAUDE.md`, or wherever you choose.
+
+No special agent integration or global installation is required. Node.js 20+
+and `npx` are enough.
+
+## What it looks like
+
+A normal agent workflow might be:
+
+```text
+You:
+"Add support for custom transports."
+
+        ↓
+
+Coding agent implements it.
+
+        ↓
+
+Agent:
+"I've finished a substantial bout of work.
+Running the project semantic checks."
+
+        ↓
+
+npx jev-pref review --hunks
+
+        ↓
+
+jev-pref:
+advisory
+
+[packages/core/src/transport.ts:42]
+new_parallel_abstraction
+P=0.91
+
+This change introduces a new transport abstraction
+alongside the project's existing Transport service.
+
+        ↓
+
+Agent reads the finding, inspects the repository,
+and decides how to improve the implementation.
+
+        ↓
+
+Agent refactors the change.
+
+        ↓
+
+npx jev-pref review --hunks
+
+        ↓
+
+approve
+```
+
+`jev-pref` is the **linter**.
+
+Your coding agent is the **fixer**.
+
+## Why?
+
+Coding agents are good at building things. They can also drift from project
+conventions while they work:
+
+- introducing a second abstraction for something that already exists;
+- widening an API beyond the project's defined policy;
+- adding configuration where the project requires an existing composition
+  mechanism;
+- creating shared state where the architecture forbids it;
+- changing a public API in a way the project defines as breaking;
+- crossing project-specific architectural boundaries.
+
+Many of these rules are difficult or impractical to encode in ESLint,
+TypeScript, or ordinary static analysis. They can still be concrete enough to
+evaluate from a code change.
+
+```text
+                  deterministic tooling
+
+formatter ─────── formatting
+TypeScript ────── types
+ESLint ────────── static rules
+tests ─────────── behavior
+
+                       │
+                       ▼
+
+jev-pref ─────── semantic project rules
+
+                       │
+                       ▼
+
+                 coding agent
+                 fixes findings
+```
+
+## The important constraint
+
+Jev is not a general-purpose senior code reviewer. It works best when **you
+define what counts** and the evidence needed to answer is present in the input.
+
+Good questions look like:
+
+```text
+Does this diff introduce new mutable module-level state?
+```
+
+```text
+Does this change remove or rename an existing exported symbol?
+```
+
+```text
+Does this diff introduce another representation of a concept already
+represented by the project's Surface abstraction?
+```
+
+```text
+Classify the API impact:
+
+- none
+- additive
+- behavioral
+- breaking
+```
+
+Poor questions look like:
+
+```text
+Is this good architecture?
+```
+
+```text
+Is this code clean?
+```
+
+```text
+Are these tests sufficient?
+```
+
+```text
+Is this implementation unnecessarily complicated?
+```
+
+Those require the evaluator to invent its own standard of quality. `jev-pref`
+uses a different contract:
+
+```text
+YOU define the rule.
+JEV classifies the evidence.
+JEV-PREF determines the outcome.
+YOUR AGENT acts on the result.
+```
+
+## Setup
+
+Run:
 
 ```bash
-# 1. Sanity check (node >= 20, git, keys, config)
-npx jev-pref doctor
+npx jev-pref setup
+```
 
-# 2. Interview-to-config: writes jev-pref.json + wires the run instruction
-#    into CLAUDE.md / AGENTS.md
-npx jev-pref init
+`setup` is intentionally agent-facing. It does not run a rigid CLI questionnaire
+or make subjective configuration decisions itself. Instead, it:
 
-# 3. Add your prefs, then review (free preview first, live after)
+1. inspects the repository;
+2. finds existing `AGENTS.md`, `CLAUDE.md`, conventions, and config;
+3. explains `jev-pref` to the coding agent;
+4. tells the agent what questions to ask you;
+5. teaches the agent how to write evidence-grounded checks;
+6. explains available integration options;
+7. provides configuration examples and verification steps.
+
+The coding agent then talks to you, understands your answers, and edits the
+project appropriately.
+
+```text
+Human + agent
+    ↓
+interpret intent
+shape preferences
+edit project files
+
+jev-pref
+    ↓
+repeatable evaluation
+structured output
+stable exit behavior
+```
+
+## What setup will ask you
+
+The exact conversation depends on the repository, but the agent establishes
+five things.
+
+### 1. What should be checked?
+
+The agent inspects existing project guidance and identifies candidate semantic
+rules. It then classifies each candidate:
+
+```text
+DIRECT
+The answer is externally defined and visible in the review input.
+
+NEEDS SHAPING
+The intent is useful, but its terms lack observable criteria.
+
+NOT FOR JEV
+The rule is procedural, needs unavailable evidence, asks for subjective
+quality judgment, or deterministic tooling can enforce it better.
+```
+
+Only DIRECT candidates should become Jev checks. Fewer well-defined checks are
+better than broad subjective coverage.
+
+For example, this guidance is useful but too broad by itself:
+
+```text
+"Public primitives should compose with existing primitives rather than
+introduce parallel systems."
+```
+
+The agent can help turn it into one or more concrete questions, such as:
+
+```text
+Does this change introduce a new public abstraction representing a concept
+already represented by the project's Surface primitive?
+```
+
+### 2. Is each result blocking or advisory?
+
+A **gate** means the project generally should not continue when a defined
+condition is detected. Gates suit architectural invariants, prohibited
+patterns, breaking API changes, security-sensitive policies, and rules that are
+substantially harder to repair later.
+
+An **advisory** surfaces a defined condition without automatically blocking
+progress. When policy severity is uncertain, start advisory and tighten it
+after observing labeled examples.
+
+Fixed classifications can map each label separately:
+
+```text
+none        → approve
+additive    → approve
+behavioral  → advisory
+breaking    → fix_now
+```
+
+### 3. Are the preferences shared or personal?
+
+Shared project rules belong in committed configuration:
+
+```text
+jev-pref.json
+```
+
+Personal or experimental rules belong in:
+
+```text
+jev-pref.local.json
+```
+
+The local file should normally be gitignored. It merges over shared policy by
+preference id: matching ids override shared checks and new ids append. Other
+local settings override their shared equivalents.
+
+The agent asks before changing `.gitignore` or deciding policy ownership.
+
+### 4. When should review run?
+
+There are several integration styles.
+
+#### Agent loop — recommended
+
+Tell the coding agent to run `jev-pref` after a meaningful bout of work, while
+the diff is still focused.
+
+```text
+implement
+   ↓
+jev-pref review --hunks
+   ↓
+fix findings
+   ↓
+continue
+```
+
+#### GitHub Actions
+
+Run the same checks on pull requests for shared policy and merge enforcement.
+
+#### Git hooks
+
+Run file-scoped checks on staged changes before committing.
+
+#### Custom scripts
+
+Consume JSON and exit codes from Node, Python, shell scripts, CI systems,
+editors, or custom agent infrastructure:
+
+```bash
+npx jev-pref review --json
+```
+
+### 5. How should Jev authenticate?
+
+Credentials are environment-only. Supported sources include:
+
+```text
+JEV_API_KEY
+TYPESAFE_API_KEY
+AI_GATEWAY_API_KEY
+VERCEL_OIDC_TOKEN
+```
+
+The setup agent inspects which authentication paths appear available and asks
+which one the project should rely on. Keys must never be written to config,
+agent instructions, scripts, or committed environment files. Persistent
+instructions may document the environment variable name, never its value.
+
+## Writing good semantic checks
+
+A good Jev check has an answer whose meaning is defined outside the model.
+
+A useful test is:
+
+> Could I explain exactly what visible evidence would make this rule true?
+
+If not, the rule needs more shaping.
+
+### Prefer concrete conditions
+
+Instead of:
+
+```text
+Keep code simple.
+```
+
+define what unwanted complexity means in this project:
+
+```text
+Does this change introduce a new abstraction layer that only forwards calls
+to one existing implementation without adding a policy boundary,
+representation change, lifecycle boundary, or implementation choice?
+```
+
+Instead of:
+
+```text
+Don't break APIs.
+```
+
+use:
+
+```text
+Does this change remove, rename, or add required arguments to an existing
+public export without preserving a compatible path?
+```
+
+Instead of `Use Effect idiomatically`, define and split the actual Effect
+conventions the project follows.
+
+### One judgment per check
+
+Avoid combining properties that can disagree:
+
+```text
+Is this code simple, type-safe, composable, well-tested, and idiomatic?
+```
+
+A condition should usually represent one semantic predicate.
+
+### Fixed classifications are powerful
+
+Not every check needs to be yes/no. Jev can classify a change into fixed labels
+defined by the project, and `jev-pref` can map those labels to consequences.
+
+```text
+Jev:      public API impact = behavioral, P=0.86, confidence=0.73
+Policy:   behavioral → advisory
+Result:   advisory
+```
+
+Classification confidence and policy severity stay separate. An important gate
+does not block unless its probability crosses the configured gate threshold; a
+high-confidence advisory remains non-blocking.
+
+### Don't replace deterministic tooling
+
+If existing tooling can enforce a rule reliably, use it:
+
+```text
+Prettier        → formatting
+ESLint          → syntax and static patterns
+TypeScript      → types
+tests           → behavior
+secret scanner  → known credential formats
+```
+
+Use `jev-pref` where semantic interpretation is useful and the project still
+defines the answer.
+
+## Keeping guidance and checks synchronized
+
+`AGENTS.md`, `CLAUDE.md`, architecture docs, and Jev configuration should not
+quietly drift apart. During setup, the agent can add a persistent rule like:
+
+```md
+## Jev preference synchronization
+
+Whenever agent instructions, architectural guidance, coding conventions, or
+similar project policy changes:
+
+1. Review the current Jev checks.
+2. Determine whether the guidance adds, removes, or changes an externally
+   defined condition Jev should evaluate.
+3. Update Jev checks when appropriate.
+4. Do not mechanically translate every instruction.
+5. Prefer concrete conditions or fixed classifications over broad quality
+   judgments.
+6. Leave deterministic rules to tests, types, linters, or static analysis.
+7. Ask the user when the intended translation is ambiguous.
+
+When changing Jev checks directly, verify that human-readable project guidance
+still reflects the intended policy.
+```
+
+Run the read-only synchronization protocol with:
+
+```bash
+npx jev-pref sync
+```
+
+It tells the agent how to reconcile project documentation and executable
+semantic checks. It does not change policy itself.
+
+## Commands
+
+### `jev-pref setup`
+
+```bash
+npx jev-pref setup
+```
+
+Agent-facing onboarding. It inspects the repository and teaches the agent how
+to configure `jev-pref` with the user.
+
+### `jev-pref review`
+
+```bash
+npx jev-pref review
+```
+
+Review the current working changes. Common scopes:
+
+```bash
+npx jev-pref review --staged
+npx jev-pref review --pr
+npx jev-pref review --diff HEAD~1
+git diff HEAD~1 | npx jev-pref review --diff -
+```
+
+Use per-hunk review for focused agent work and file/line attribution:
+
+```bash
+npx jev-pref review --hunks
+```
+
+Use per-file review for broader changes and pull requests:
+
+```bash
+npx jev-pref review --files
+```
+
+Jev accepts at most 30k input tokens, including the review state and questions.
+`jev-pref` uses a conservative per-request diff budget, splits bounded file or
+hunk scopes when necessary, and fails loudly rather than approving truncated or
+incomplete input. Review changes while they are still small, or narrow them
+with `--include` and `--exclude`.
+
+Preview the planned questions and state without a live call:
+
+```bash
 npx jev-pref review --dry-run
-npx jev-pref review --staged     # pre-commit  ·  --pr for PRs  ·  --hunks for per-hunk verdicts
+```
 
-# 4. Calibrate later against real verdicts
+Produce machine-readable output:
+
+```bash
+npx jev-pref review --json
+```
+
+### `jev-pref sync`
+
+```bash
+npx jev-pref sync
+```
+
+Agent-facing maintenance guidance for reconciling project policy and Jev
+checks after meaningful guidance or configuration changes.
+
+### `jev-pref tune`
+
+```bash
+npx jev-pref tune
+```
+
+Calibrate checks against labeled examples. Condition evals use boolean expected
+values; fixed classifications use expected label strings.
+
+```bash
 npx jev-pref tune --sweep
+npx jev-pref tune --check=0.8
 ```
 
-Keys are env-only (`JEV_API_KEY`, else `TYPESAFE_API_KEY` →
-`AI_GATEWAY_API_KEY` → `VERCEL_OIDC_TOKEN`) — never committed. Full command
-reference is in the [engine README](./packages/jev-pref/).
-
-## Install
+### `jev-pref doctor`
 
 ```bash
-# List available skills without installing
-npx skills add doeixd/jev-pref --list
+npx jev-pref doctor
+npx jev-pref doctor --verbose
+```
 
-# Install one skill (project scope, default)
+Checks runtime support, configuration and discovery, authentication presence,
+supported suites, and invalid or ignored keys.
+
+### `jev-pref examples`
+
+```bash
+npx jev-pref examples
+npx jev-pref examples agent-loop
+npx jev-pref examples pre-commit
+npx jev-pref examples github-action
+npx jev-pref examples review-script
+```
+
+Prints copyable integration recipes without writing them into the repository.
+
+## Configuration
+
+A shared project config might contain a condition and a fixed classification:
+
+```json
+{
+  "$schema": "https://raw.githubusercontent.com/doeixd/jev-pref/master/packages/jev-pref/schema.json",
+  "suites": ["prefs"],
+  "gateThreshold": 0.8,
+  "advisoryThreshold": 0.7,
+  "failOn": "gates",
+  "prefs": [
+    {
+      "id": "shared_mutable_state",
+      "gate": true,
+      "question": "Does this change introduce new mutable state shared across module or application boundaries?",
+      "guidance": "Local variables and state scoped to one object instance do not count."
+    },
+    {
+      "id": "public_api_change",
+      "type": "choice",
+      "question": "Classify the public API impact introduced by this change.",
+      "labels": {
+        "none": "No exported API changes.",
+        "additive": "Only backwards-compatible additions.",
+        "behavioral": "Existing API remains callable but observable behavior changes.",
+        "breaking": "An existing export is removed, renamed, or requires incompatible usage."
+      },
+      "outcomes": {
+        "none": "approve",
+        "additive": "approve",
+        "behavioral": "advisory",
+        "breaking": "fix_now"
+      }
+    }
+  ]
+}
+```
+
+Legacy `{ "gate", "text" }` conditions remain accepted, but `question` with
+optional `guidance` is the preferred form.
+
+Shared policy lives in `jev-pref.json`. Optional personal additions and same-id
+overrides live in gitignored `jev-pref.local.json`.
+
+## Outcomes and exit codes
+
+`jev-pref` reduces evaluator results to three outcomes:
+
+```text
+approve    no configured check crossed its threshold
+advisory   a non-blocking condition or label was detected
+fix_now    a blocking condition or label was detected
+```
+
+The stable process contract is:
+
+```text
+0  accepted under the configured failOn policy
+1  the configured failOn policy was triggered
+2  configuration, infrastructure, or usage failure
+```
+
+Exit code 2 is never approval. Agents should normally fix blocking findings and
+rerun, with at most three automatic review/fix iterations before asking the
+user how to proceed.
+
+## Agent integration
+
+The recommended integration is deliberately simple. Put something like this in
+`AGENTS.md` or `CLAUDE.md`:
+
+```md
+## Semantic review
+
+After a substantial bout of implementation work, run:
+
+    npx jev-pref review --hunks
+
+Use the findings as an independent semantic check against project-defined
+preferences.
+
+- `fix_now`: address the finding and rerun the review.
+- `advisory`: consider the finding in context.
+- `approve`: continue.
+- infrastructure or configuration errors are not approval.
+
+Perform at most 3 automatic review/fix loops before asking the user.
+Whenever project-policy guidance changes, run `npx jev-pref sync` and reconcile
+the guidance with the project's Jev checks.
+```
+
+The agent already understands the codebase and knows how to edit it. `jev-pref`
+gives it another source of focused, independently generated information.
+
+## GitHub Actions
+
+The optional [review Action](./actions/review/) runs the same evaluator on pull
+requests, adds a sticky summary and annotations, and maps the verdict to check
+status. It defaults to bounded per-file requests.
+
+```yaml
+- uses: actions/checkout@v4
+  with:
+    fetch-depth: 0
+- uses: doeixd/jev-pref/actions/review@master
+  with:
+    api-key: ${{ secrets.TYPESAFE_API_KEY }}
+    fail-on: gates
+```
+
+Teams can start advisory and make selected rules blocking after calibrating
+them on real changes.
+
+## Custom scripting
+
+`jev-pref` is a normal command-line primitive:
+
+```bash
+npx jev-pref review --json
+```
+
+Conceptually:
+
+```js
+const result = await run("npx", ["jev-pref", "review", "--json"])
+const review = JSON.parse(result.stdout)
+
+if (review.outcome === "fix_now") {
+  // ask an agent to fix it
+  // block a deployment
+  // create a ticket
+  // send a notification
+}
+```
+
+The interface is structured JSON plus a stable exit code, rather than a
+JavaScript library API.
+
+## Agent skill
+
+The optional [`jev-pref` skill](./skills/jev-pref/SKILL.md) is intentionally
+thin. Its job is discovery: run `npx jev-pref setup` and follow the instructions
+printed by the authoritative CLI protocol.
+
+```bash
 npx skills add doeixd/jev-pref --skill jev-pref
-
-# Install globally (available across all projects)
-npx skills add doeixd/jev-pref --skill jev-pref -g -y
-
-# Install everything from this repo
-npx skills add doeixd/jev-pref --all
 ```
 
-For local testing:
+## Architecture
+
+```text
+                 HUMAN / PROJECT
+                       │
+                       ▼
+             explicit semantic rules
+                       │
+                       ▼
+                 jev-pref config
+                       │
+                       ▼
+                    git diff
+                       │
+                       ▼
+                ┌────────────┐
+                │    Jev     │
+                │ classifier │
+                └─────┬──────┘
+                      │
+             typed answers + confidence
+                      │
+                      ▼
+             deterministic policy
+                      │
+          ┌───────────┼───────────┐
+          ▼           ▼           ▼
+       approve     advisory    fix_now
+          │           │           │
+          └───────────┼───────────┘
+                      ▼
+                 coding agent
+                      │
+                      ▼
+                  improved code
+```
+
+The evaluator does not own your definition of quality. The project does.
+
+## Philosophy
+
+A useful semantic check should generally be:
+
+- **Externally defined:** the project or user determines what counts.
+- **Evidence-grounded:** the answer follows from information supplied to Jev.
+- **Narrow:** one check represents one meaningful judgment.
+- **Actionable:** a finding gives the coding agent information it can use.
+- **Calibratable:** labeled examples reveal whether the check works.
+- **Complementary:** deterministic tooling does not already enforce it well.
+
+If a check depends mostly on the evaluator's own sense of what is elegant,
+safe, clean, or good, it is not ready to become a Jev check.
+
+## The short version
+
+```text
+Define the rules static tooling can't express.
+
+Let Jev classify whether your changes match them.
+
+Let your coding agent use those findings to improve the project.
+```
 
 ```bash
-npx skills add ./ --list
-npx skills add ./ --skill jev-pref
+npx jev-pref setup
 ```
 
-Test a skill without installing:
-
-```bash
-npx skills use ./jev-pref --skill jev-pref | claude
-```
-
-## Skills
-
-| Skill | Description |
-| ----- | ----------- |
-| [jev-pref](./skills/jev-pref/SKILL.md) | Set up Jev as a durable user-preference code reviewer via the `jev-pref` engine. |
-
-## Engine (`npx jev-pref`)
-
-The [`jev-pref` npm package](./packages/jev-pref/) implements the reviewer:
-`review` / `init` / `tune` / `doctor` (see its README for flags, config
-precedence, per-hunk review, and agent handoff). The skill teaches setup;
-the engine does the work — update logic once, every installation improves.
-
-Prefer piping? `git diff HEAD~1 | npx jev-pref review --diff -` reviews any
-diff with no repo required; `--json` keeps stdout machine-readable for
-composition with other tools.
-
-## GitHub Action
-
-[`actions/review`](./actions/review/) reviews PRs: sticky summary comment
-with `[file:line]` attribution, file annotations, outcome-driven check status
-(`examples/` has strict, advisory, and nightly-tune workflows). Start new
-repos on advisory (`fail-on: never`), go strict once `tune` confirms.
-This repo dogfoods it on PRs to master (see
-`.github/workflows/jev-review.yml`) with the root `jev-pref.json`.
-
-## Development
-
-```bash
-node scripts/validate-skills.mjs   # skill frontmatter + layout
-npm test --prefix packages/jev-pref  # engine unit suites (node:test)
-node packages/jev-pref/bin/jev-pref.js doctor  # env sanity (needs no key to run)
-```
-
-CI (`.github/workflows/validate.yml`) runs all three plus `tune --dry-run`
-on every push/PR. Live engine checks need a key (`TYPESAFE_API_KEY` in env
-locally, repo secret in CI) — dry-runs are always free.
-
-## Repo layout
-
-Skills are discovered by the `skills` CLI in `skills/` (up to 3 levels deep, so
-`skills/<name>/SKILL.md` and `skills/<category>/<name>/SKILL.md` both work).
-Each skill is a directory with at minimum a `SKILL.md` containing `name` and
-`description` frontmatter — see the [Agent Skills spec](https://agentskills.io/specification).
-
-```
-jev-pref/
-├── README.md
-├── LICENSE
-├── .env.example             # key names for local runs (never commit .env)
-├── skills/                    # <-- installable skills live here
-│   └── jev-pref/
-│       ├── SKILL.md           # required: name + description + instructions
-│       ├── references/        # jev-essentials, prefs-to-questions, interview, wiring, effect-stack, ci-setup
-│       └── assets/            # review-script-template.mjs + effect.ts + CLAUDE.md snippet
-├── packages/
-│   └── jev-pref/              # <-- npm engine: npx jev-pref review|init|tune|doctor
-│       ├── src/               # cli, commands, suites, git/hunks/agent/jev plumbing
-│       ├── test/              # node:test unit suites (npm test)
-│       └── evals/             # sample labeled cases for tune
-├── actions/
-│   └── review/                # <-- reusable GitHub Action + examples
-├── templates/
-│   └── skill-template/        # starter copy-paste template (not installed)
-│       └── SKILL.md
-├── scripts/
-│   └── validate-skills.mjs    # checks frontmatter + layout
-└── .github/workflows/
-    ├── validate.yml           # skills check + engine tests + doctor + tune dry-run
-    └── jev-review.yml         # dogfood: PR review on master
-```
-
-## Add a new skill
-
-```bash
-# Option A: use the CLI template
-npx skills init skills/my-skill
-
-# Option B: copy the bundled template
-cp -r templates/skill-template skills/my-skill
-```
-
-Then edit `skills/my-skill/SKILL.md`:
-
-1. Set `name` (lowercase, hyphens, must match directory name) and `description`
-   (what it does + when to use it — this is the trigger).
-2. Keep the body under ~500 lines. Put details in `references/`, executable code
-   in `scripts/`, templates in `assets/`.
-3. Validate and list locally before pushing:
-
-```bash
-node scripts/validate-skills.mjs
-npx skills add ./ --list
-```
-
-## API keys and environment
-
-No PATH changes needed — just Node 20+ and `npx`. The engine reads keys from
-the environment only (never committed), in this order:
-
-1. `JEV_API_KEY` — explicit override, wins over everything.
-2. `TYPESAFE_API_KEY` — direct TypeSafe path (model `jev-latest`).
-3. `AI_GATEWAY_API_KEY` — Vercel AI Gateway (model `typesafe-ai/jev`).
-4. `VERCEL_OIDC_TOKEN` — Gateway via OIDC on Vercel deployments.
-
-Copy `.env.example` to `.env` for local runs (loaded by your shell, never by
-the script — the script reads `process.env` directly).
-
-## Validation
-
-```bash
-node scripts/validate-skills.mjs     # skill frontmatter + layout
-npm test --prefix packages/jev-pref  # engine unit suites
-```
-
-See [Development](#development) for the full loop. CI
-(`.github/workflows/validate.yml`) runs these plus `doctor` and
-`tune --dry-run` on every push/PR.
-
-## skills.sh
-
-Published as [`doeixd/jev-pref`](https://skills.sh/doeixd/jev-pref).
-Install counts appear there automatically as people run
-`npx skills add doeixd/jev-pref`. No registry submission needed.
-
-## License
-
-MIT — see [LICENSE](./LICENSE).
+Then let your agent take it from there.

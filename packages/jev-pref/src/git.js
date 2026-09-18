@@ -62,11 +62,14 @@ async function hasHead(root) {
   }
 }
 
-async function untrackedContent(root, list, budget) {
+async function untrackedContent(root, list, budget, { maxFileChars = 20000 } = {}) {
   const out = [];
   const sections = [];
+  const incompleteReasons = [];
   let used = 0;
-  for (const f of list.split("\n").map((s) => s.trim()).filter(Boolean).slice(0, 20)) {
+  const files = list.split("\n").map((s) => s.trim()).filter(Boolean);
+  if (files.length > 100) incompleteReasons.push(`${files.length - 100} untracked files exceed the 100-file collection limit`);
+  for (const f of files.slice(0, 100)) {
     if (BINARY_EXT.has(extname(f).toLowerCase())) {
       out.push(`--- new file: ${f} (binary, skipped) ---`);
       continue;
@@ -74,8 +77,9 @@ async function untrackedContent(root, list, budget) {
     try {
       const abs = join(root, f);
       const info = await stat(abs);
-      if (info.size > 20000) {
+      if (info.size > maxFileChars) {
         out.push(`--- new file: ${f} (too large, skipped) ---`);
+        incompleteReasons.push(`${f} exceeds the ${maxFileChars}-character untracked-file limit`);
         continue;
       }
       const content = await readFile(abs, "utf8");
@@ -85,6 +89,7 @@ async function untrackedContent(root, list, budget) {
       }
       if (used + content.length > budget) {
         out.push(`--- new file: ${f} (budget exceeded, skipped) ---`);
+        incompleteReasons.push(`${f} exceeds the remaining untracked-content budget`);
         continue;
       }
       used += content.length;
@@ -93,9 +98,10 @@ async function untrackedContent(root, list, budget) {
       sections.push({ file: f, text: section });
     } catch {
       out.push(`--- new file: ${f} (unreadable, skipped) ---`);
+      incompleteReasons.push(`${f} could not be read`);
     }
   }
-  return { text: out.join("\n"), sections };
+  return { text: out.join("\n"), sections, incompleteReasons };
 }
 
 /**
@@ -107,15 +113,17 @@ async function untrackedContent(root, list, budget) {
  * Untracked files are included ONLY for working-tree scope — a --staged,
  * --diff, or --pr review judges exactly what that scope contains.
  */
-export async function collectState({ cwd = ".", ref = null, staged = false, maxDiffChars = 24000, include = [], exclude = [], diffText = null } = {}) {
+export async function collectState({ cwd = ".", ref = null, staged = false, maxDiffChars = 20000, include = [], exclude = [], diffText = null, truncate = true } = {}) {
   if (diffText !== null) {
-    const diff = diffText.slice(0, maxDiffChars);
+    const diff = truncate ? diffText.slice(0, maxDiffChars) : diffText;
     return {
       diff,
-      truncated: diffText.length > maxDiffChars,
+      truncated: truncate && diffText.length > maxDiffChars,
       status: "(stdin)",
       untracked: "",
       untrackedSections: [],
+      trackedDiff: diff,
+      incompleteReasons: [],
       stat: "(stdin)",
       branch: "(stdin)",
       scope: "stdin",
@@ -168,24 +176,33 @@ export async function collectState({ cwd = ".", ref = null, staged = false, maxD
     (b) => b.trim(),
     () => "(unknown)",
   );
-  let diff = rawDiff.slice(0, maxDiffChars);
-  let truncated = rawDiff.length > maxDiffChars;
+  let diff = truncate ? rawDiff.slice(0, maxDiffChars) : rawDiff;
+  let truncated = truncate && rawDiff.length > maxDiffChars;
   let untrackedSections = [];
+  let incompleteReasons = [];
   if (untracked !== "") {
-    const extra = await untrackedContent(root, untracked, maxDiffChars - diff.length);
+    const extra = await untrackedContent(
+      root,
+      untracked,
+      truncate ? maxDiffChars - diff.length : Number.POSITIVE_INFINITY,
+      { maxFileChars: truncate ? maxDiffChars : 1024 * 1024 },
+    );
     if (extra.text !== "") {
       const combined = diff !== "" ? diff + "\n" + extra.text : extra.text;
-      diff = combined.slice(0, maxDiffChars);
-      truncated = truncated || combined.length > maxDiffChars;
+      diff = truncate ? combined.slice(0, maxDiffChars) : combined;
+      truncated = truncated || (truncate && combined.length > maxDiffChars);
       untrackedSections = extra.sections;
+      incompleteReasons = extra.incompleteReasons;
     }
   }
   return {
     diff,
+    trackedDiff: truncate ? rawDiff.slice(0, maxDiffChars) : rawDiff,
     truncated,
     status: status.trim(),
     untracked,
     untrackedSections,
+    incompleteReasons,
     stat: statOut.trim(),
     branch,
     scope: staged ? "staged" : ref ?? "working-tree",

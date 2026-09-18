@@ -12,6 +12,12 @@ inputs:
   comment-mode:
     description: PR comment behavior (both|summary|annotations|none)
     default: both
+  granularity:
+    description: Review scope (files|hunks|whole); files avoids oversized Jev requests
+    default: files
+  max-scopes:
+    description: Maximum per-file/per-hunk Jev calls before failing with guidance to narrow the PR
+    default: "25"
   gate-threshold:
     description: Override gate threshold (default from config)
     default: ""
@@ -25,7 +31,7 @@ inputs:
     description: Directory to review (and to resolve config/keys from)
     default: .
   base:
-    description: Base ref for the diff (default: PR base from the event)
+    description: "Base ref for the diff (default: PR base from the event)"
     default: ""
   paths:
     description: Newline/CSV glob filter — review only if a changed file matches
@@ -34,7 +40,7 @@ inputs:
     description: Newline/CSV glob filter — skip files matching these
     default: ""
   engine:
-    description: Engine package spec (e.g. jev-pref@0.1.0, run via npx) or local path to bin/jev-pref.js
+    description: Engine package spec (e.g. jev-pref@0.2.0, run via npx) or local path to bin/jev-pref.js
     default: ""
   engine-version:
     description: jev-pref version when engine is npx (default latest)
@@ -69,6 +75,8 @@ runs:
         INPUT_SUITES: ${{ inputs.suites }}
         INPUT_FAIL_ON: ${{ inputs.fail-on }}
         INPUT_COMMENT_MODE: ${{ inputs.comment-mode }}
+        INPUT_GRANULARITY: ${{ inputs.granularity }}
+        INPUT_MAX_SCOPES: ${{ inputs.max-scopes }}
         INPUT_GATE_THRESHOLD: ${{ inputs.gate-threshold }}
         INPUT_ADVISORY_THRESHOLD: ${{ inputs.advisory-threshold }}
         INPUT_CONFIG_PATH: ${{ inputs.config-path }}

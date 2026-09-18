@@ -6,9 +6,10 @@ import { execFile as execFileCb } from "node:child_process";
 import { promisify } from "node:util";
 import { boolFlag, intFlag, InvalidArgs, listFlag, numFlag, strFlag } from "../args.js";
 import { runAgent, AgentError } from "../agent.js";
+import { JEV_INPUT_TOKEN_LIMIT, SAFE_SERIALIZED_INPUT_CHARS, serializedInputChars } from "../budget.js";
 import { resolveApiKey, resolveConfig, validateConfig } from "../config.js";
 import { collectState, GitError, UnsafeRefError } from "../git.js";
-import { hunkLabel, splitHunks } from "../hunks.js";
+import { hunkLabel, splitFiles, splitHunks } from "../hunks.js";
 import * as prefsSuite from "../suites/prefs.js";
 import * as secretsSuite from "../suites/secrets.js";
 
@@ -52,7 +53,10 @@ async function readStdinDiff(out, { stdin = process.stdin } = {}) {
   for await (const chunk of stdin) {
     chunks.push(chunk);
     bytes += chunk.length;
-    if (bytes > CAP) break; // collectState truncates to maxDiffChars anyway
+    if (bytes > CAP) {
+      out.error("review-error: piped diff exceeds the 10 MiB input limit; narrow it before review");
+      return null;
+    }
   }
   return Buffer.concat(chunks).toString("utf8");
 }
@@ -87,10 +91,15 @@ export function renderVerdict(suiteVerdicts, scope = "") {
   const tag = scope ? `[${scope}] ` : "";
   const lines = [];
   for (const v of suiteVerdicts) {
+    for (const c of v.classifications ?? []) {
+      if (!c.label) continue;
+      const confidence = c.confidence === undefined ? "" : ` confidence=${c.confidence.toFixed(2)}`;
+      lines.push(`- ${tag}[${v.suite}] ${c.id}=${c.label} P=${c.probability.toFixed(2)}${confidence} -> ${c.outcome}`);
+    }
     for (const f of [...v.failures, ...v.notes]) lines.push(`- ${tag}[${v.suite}] ${f}`);
   }
   const head = `${tag}${worst} (suites: ${suiteVerdicts.map((v) => `${v.suite}=${v.outcome}`).join(", ")})`;
-  if (worst === "approve") return head;
+  if (worst === "approve") return lines.length > 0 ? `${head}\n${lines.join("\n")}` : head;
   return lines.length > 0 ? `${head}\n${lines.join("\n")}` : `${head}\n- minor notes`;
 }
 
@@ -155,12 +164,22 @@ export async function review(argv, { cwd = ".", out = console } = {}) {
 
   const hunksFlag = boolFlag(flags, "hunks");
   const noHunksFlag = boolFlag(flags, "no-hunks");
+  const filesFlag = boolFlag(flags, "files");
+  const noFilesFlag = boolFlag(flags, "no-files");
   if (hunksFlag && noHunksFlag) {
     out.error("review-error: --hunks and --no-hunks are mutually exclusive");
     return 2;
   }
+  if (filesFlag && noFilesFlag) {
+    out.error("review-error: --files and --no-files are mutually exclusive");
+    return 2;
+  }
+  if (hunksFlag && filesFlag) {
+    out.error("review-error: --hunks and --files are mutually exclusive");
+    return 2;
+  }
 
-  // One resolution pass: defaults < fenced < json < env < flags.
+  // One resolution pass: defaults < fenced < project < local < env < flags.
   const configFlag = strFlag(flags, "config");
   const overrides = {};
   for (const [flag, key] of [["suites", "suites"], ["include", "include"], ["exclude", "exclude"]]) {
@@ -173,12 +192,6 @@ export async function review(argv, { cwd = ".", out = console } = {}) {
   ]) {
     const v = strFlag(flags, flag);
     if (v !== undefined) overrides[key] = numFlag(flags, flag, { min: 0, max: 1 });
-  }
-  const sev = strFlag(flags, "severity-fail");
-  if (sev !== undefined) {
-    const n = Number(sev);
-    if (!Number.isFinite(n) || n < 0) throw new InvalidArgs(`--severity-fail must be >= 0, got ${JSON.stringify(sev)}`);
-    overrides.severityFail = n;
   }
   for (const [flag, key] of [
     ["timeout-ms", "timeoutMs"],
@@ -193,8 +206,16 @@ export async function review(argv, { cwd = ".", out = console } = {}) {
   }
   const failOn = strFlag(flags, "fail-on");
   if (failOn !== undefined) overrides.failOn = failOn;
-  if (hunksFlag) overrides.hunks = true;
+  if (hunksFlag) {
+    overrides.hunks = true;
+    overrides.files = false;
+  }
   if (noHunksFlag) overrides.hunks = false;
+  if (filesFlag) {
+    overrides.files = true;
+    overrides.hunks = false;
+  }
+  if (noFilesFlag) overrides.files = false;
 
   let config;
   try {
@@ -253,6 +274,7 @@ export async function review(argv, { cwd = ".", out = console } = {}) {
       include: config.include,
       exclude: config.exclude,
       diffText: stdinDiff,
+      truncate: !(config.hunks || config.files),
     });
   } catch (e) {
     if (e instanceof UnsafeRefError || e instanceof GitError) {
@@ -266,17 +288,30 @@ export async function review(argv, { cwd = ".", out = console } = {}) {
     else out.log("approve: no changes detected.");
     return 0;
   }
+  if (gs.incompleteReasons?.length > 0) {
+    out.error(
+      `review-error: review input is incomplete: ${gs.incompleteReasons.join("; ")}. ` +
+      "Review a smaller change or narrow scope with --include/--exclude; incomplete input is not approval.",
+    );
+    return 2;
+  }
+  if (gs.truncated) {
+    out.error(
+      `review-error: diff exceeds the ${config.maxDiffChars}-character per-request budget. ` +
+      "Review a smaller change, use --files/--hunks, or narrow scope with --include/--exclude. " +
+      "Jev has a 30k-token total input limit; partial diffs are not treated as approval.",
+    );
+    return 2;
+  }
 
   const baseState = {
-    prefs: config.prefs.map((p) => `${p.id} [${p.gate ? "gate" : "advisory"}]: ${p.text}`),
+    prefs: config.prefs.map(prefsSuite.describePreference),
     untracked_files: gs.untracked === "" ? "(none)" : gs.untracked,
     git_status: gs.status === "" ? "(clean)" : gs.status,
     diff_stat: gs.stat === "" ? "(empty)" : gs.stat,
     context: `branch ${gs.branch}, scope ${gs.scope}`,
   };
-  const note = gs.truncated
-    ? `diff truncated to ${config.maxDiffChars} chars; review covers the leading portion only.`
-    : "full diff included.";
+  const note = "complete review scope included; requests stay below the configured per-request diff budget.";
 
   const client = {
     apiKey: resolveApiKey(),
@@ -287,13 +322,16 @@ export async function review(argv, { cwd = ".", out = console } = {}) {
   };
   const timeoutMs = config.timeoutMs;
 
-  // Scopes to judge: per-hunk (each hunk isolated) or one whole-diff scope.
-  // Hunk mode costs one Jev call per hunk — capped; overflow falls back.
+  // Scopes to judge: per-hunk, per-file, or one whole diff. Scoped modes
+  // collect the full diff and split oversized scopes into bounded parts.
   const hunksMode = config.hunks;
+  const filesMode = config.files;
+  const scopedMode = hunksMode || filesMode;
+  const scopeKind = hunksMode ? "hunks" : filesMode ? "files" : "whole-diff";
   let scopes;
-  let hunkFallbackNote = "";
-  if (hunksMode) {
-    const hunks = splitHunks(gs.diff);
+  if (scopedMode) {
+    const trackedDiff = gs.trackedDiff ?? gs.diff;
+    const tracked = hunksMode ? splitHunks(trackedDiff) : splitFiles(trackedDiff);
     // Untracked files are not in `git diff` — each becomes its own scope.
     const newFileScopes = (gs.untrackedSections ?? []).map((s) => {
       const lines = s.text.split("\n").length;
@@ -306,25 +344,48 @@ export async function review(argv, { cwd = ".", out = console } = {}) {
         files: [s.file],
       };
     });
-    const hunkScopes = hunks.map((h) => ({
-      label: hunkLabel(h),
-      file: h.file,
-      start: h.start,
-      count: h.count,
-      state: {
-        ...baseState,
-        hunk: { file: h.file, label: hunkLabel(h), header: h.header, body: h.body },
-        diff: h.body,
-        note,
-      },
-      files: [h.file],
-    }));
-    const all = [...hunkScopes, ...newFileScopes];
+    const trackedScopes = tracked.map((item) => {
+      const label = hunksMode ? hunkLabel(item) : item.file;
+      return {
+        label,
+        file: item.file,
+        start: item.start,
+        count: item.count,
+        state: {
+          ...baseState,
+          ...(hunksMode ? { hunk: { file: item.file, label, header: item.header } } : { changed_file: item.file }),
+          diff: item.body,
+          note,
+        },
+        files: [item.file],
+      };
+    });
+    const all = [...trackedScopes, ...newFileScopes].flatMap((scope) => {
+      if (scope.state.diff.length <= config.maxDiffChars) return [scope];
+      const parts = [];
+      for (let offset = 0; offset < scope.state.diff.length; offset += config.maxDiffChars) {
+        parts.push(scope.state.diff.slice(offset, offset + config.maxDiffChars));
+      }
+      return parts.map((part, index) => ({
+        ...scope,
+        label: `${scope.label} (part ${index + 1}/${parts.length})`,
+        state: {
+          ...scope.state,
+          diff: part,
+          note: `${note} Split from an oversized ${hunksMode ? "hunk" : "file"}.`,
+        },
+      }));
+    });
     if (all.length === 0) {
-      scopes = [{ label: "", state: { ...baseState, diff: gs.diff, note }, files: [] }];
-    } else if (all.length > config.maxHunks) {
-      hunkFallbackNote = `(${all.length} scopes exceed max-hunks=${config.maxHunks}; whole-diff fallback)`;
-      scopes = [{ label: "", state: { ...baseState, diff: gs.diff, note: `${note} ${hunkFallbackNote}` }, files: [] }];
+      const parts = [];
+      for (let offset = 0; offset < gs.diff.length; offset += config.maxDiffChars) {
+        parts.push(gs.diff.slice(offset, offset + config.maxDiffChars));
+      }
+      scopes = parts.map((part, index) => ({
+        label: parts.length === 1 ? "input" : `input (part ${index + 1}/${parts.length})`,
+        state: { ...baseState, diff: part, note: `${note} Input was not a parseable unified diff.` },
+        files: [],
+      }));
     } else {
       scopes = all;
     }
@@ -332,16 +393,35 @@ export async function review(argv, { cwd = ".", out = console } = {}) {
     scopes = [{ label: "", state: { ...baseState, diff: gs.diff, note }, files: [] }];
   }
 
+  if (scopes.length > config.maxHunks) {
+    out.error(
+      `review-error: ${scopes.length} ${scopeKind} scopes exceed max-hunks=${config.maxHunks}. ` +
+      "Review a smaller change, narrow it with --include/--exclude, or intentionally raise --max-hunks. " +
+      "jev-pref will not collapse scoped review into an oversized whole-diff request.",
+    );
+    return 2;
+  }
+
   const questions = suiteQuestions(config);
+  for (const scope of scopes) {
+    const inputChars = serializedInputChars(scope.state, questions);
+    if (inputChars > SAFE_SERIALIZED_INPUT_CHARS) {
+      out.error(
+        `review-error: planned Jev input is ${inputChars} characters before tokenization. ` +
+        `Jev accepts at most ${JEV_INPUT_TOKEN_LIMIT} input tokens; reduce maxDiffChars, preferences, or review scope.`,
+      );
+      return 2;
+    }
+  }
   if (dryRun) {
-    const preview = hunksMode
+    const preview = scopedMode
       ? {
         mode: "dry-run",
-        granularity: "hunks",
+        granularity: scopeKind,
         suites: config.suites,
         scopes: scopes.map((s) => ({ label: s.label || "(whole-diff)", file: s.file, state: { ...s.state, diff: s.state.diff.slice(0, 500) } })),
         questions,
-        note: hunkFallbackNote || undefined,
+        note: `Jev input limit: 30k tokens; diff budget per request: ${config.maxDiffChars} characters.`,
       }
       : {
         mode: "dry-run",
@@ -366,7 +446,10 @@ export async function review(argv, { cwd = ".", out = console } = {}) {
     }
   } catch (e) {
     if (e instanceof JevError || e instanceof JevOverloadedError) {
-      out.error(`review-error: ${e.message}`);
+      const hint = /max[_ -]?tokens|token limit/i.test(e.message)
+        ? " Use --files/--hunks or narrow the review with --include/--exclude. Jev accepts at most 30k input tokens."
+        : "";
+      out.error(`review-error: ${e.message}${hint}`);
       return 2;
     }
     throw e;
@@ -381,10 +464,11 @@ export async function review(argv, { cwd = ".", out = console } = {}) {
     payload = { outcome: overall, suites: scopeResults[0].suiteVerdicts, files: [] };
   } else {
     const blocks = scopeResults.map((s) => renderVerdict(s.suiteVerdicts, s.label));
-    text = `${overall} (${scopeResults.length} hunks)${hunkFallbackNote ? ` ${hunkFallbackNote}` : ""}\n${blocks.join("\n")}`;
+    text = `${overall} (${scopeResults.length} ${scopeKind} scopes)\n${blocks.join("\n")}`;
     payload = {
       outcome: overall,
-      hunks: scopeResults.map((s) => ({ label: s.label, file: s.file, start: s.start, count: s.count, outcome: s.outcome, suites: s.suiteVerdicts })),
+      scopes: scopeResults.map((s) => ({ label: s.label, file: s.file, start: s.start, count: s.count, outcome: s.outcome, suites: s.suiteVerdicts })),
+      ...(hunksMode ? { hunks: scopeResults.map((s) => ({ label: s.label, file: s.file, start: s.start, count: s.count, outcome: s.outcome, suites: s.suiteVerdicts })) } : {}),
       files: [...new Set(scopeResults.flatMap((s) => s.files))],
     };
   }

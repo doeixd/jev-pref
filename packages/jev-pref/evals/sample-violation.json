@@ -1,5 +1,5 @@
 {
-  "name": "adds any",
-  "diff": "--- a/api.ts\n+++ b/api.ts\n@@\n-function get(id: string) {\n+function get(id: any) {\n   return db.load(id);\n }",
-  "expected": { "no_any": true, "early_returns": false }
+  "name": "skill outside the required directory",
+  "diff": "diff --git a/tools/example/SKILL.md b/tools/example/SKILL.md\nnew file mode 100644\n--- /dev/null\n+++ b/tools/example/SKILL.md\n@@ -0,0 +1,3 @@\n+# Example\n+\n+This skill is outside skills/<name>/ and has no frontmatter.",
+  "expected": { "skill_layout": true }
 }

@@ -74,7 +74,12 @@ function commentBody({ outcome, suites, base, head, runUrl }) {
   lines.push(`Reviewed \`${base}\`...${head} · suites: ${suites.map((s) => `${s.suite}=\`${s.outcome}\``).join(", ")}`);
   lines.push("");
   for (const s of suites) {
-    const items = [...s.failures, ...s.notes];
+    const classifications = (s.classifications ?? []).map((c) => {
+      const scope = c.scope ? `[${c.scope}] ` : "";
+      const confidence = c.confidence === undefined ? "" : ` confidence=${Number(c.confidence).toFixed(2)}`;
+      return `${scope}${c.id}=${c.label} P=${Number(c.probability).toFixed(2)}${confidence} → ${c.outcome}`;
+    });
+    const items = [...classifications, ...s.failures, ...s.notes];
     lines.push(`<details><summary><b>${s.suite}</b> — ${s.outcome}</summary>`, "");
     lines.push(items.length > 0 ? items.map((i) => `- ${i}`).join("\n") : "_clean_");
     lines.push("", "</details>", "");
@@ -108,24 +113,25 @@ function emitOutput(name, value) {
 
 /**
  * Normalize engine verdict shapes: whole-diff ({ outcome, suites, files })
- * and per-hunk ({ outcome, hunks: [{ label, suites }], files }). Hunk mode
- * aggregates per-suite with [file:line] item prefixes so the sticky comment
- * keeps file attribution.
+ * and scoped ({ outcome, scopes|hunks: [{ label, suites }], files }). Scoped
+ * review aggregates per-suite with labels so comments keep attribution.
  */
 function normalizeVerdict(v) {
   if (v && Array.isArray(v.suites)) {
     return { outcome: v.outcome ?? "error", suites: v.suites, files: v.files ?? [] };
   }
-  if (v && Array.isArray(v.hunks)) {
+  const scoped = Array.isArray(v?.hunks) ? v.hunks : Array.isArray(v?.scopes) ? v.scopes : null;
+  if (scoped) {
     const bySuite = new Map();
-    for (const h of v.hunks) {
+    for (const h of scoped) {
       for (const s of h.suites ?? []) {
         if (!bySuite.has(s.suite)) {
-          bySuite.set(s.suite, { suite: s.suite, outcome: "approve", failures: [], notes: [] });
+          bySuite.set(s.suite, { suite: s.suite, outcome: "approve", failures: [], notes: [], classifications: [] });
         }
         const agg = bySuite.get(s.suite);
         for (const f of s.failures ?? []) agg.failures.push(`[${h.label}] ${f}`);
         for (const n of s.notes ?? []) agg.notes.push(`[${h.label}] ${n}`);
+        for (const c of s.classifications ?? []) agg.classifications.push({ ...c, scope: h.label });
         if (s.outcome === "fix_now") agg.outcome = "fix_now";
         else if (s.outcome === "advisory" && agg.outcome !== "fix_now") agg.outcome = "advisory";
       }
@@ -140,6 +146,8 @@ async function main() {
   const suites = inp("SUITES", "prefs,secrets");
   const failOn = inp("FAIL_ON", "gates");
   const commentMode = inp("COMMENT_MODE", "both");
+  const granularity = inp("GRANULARITY", "files");
+  const maxScopes = inp("MAX_SCOPES", "25");
   const configPath = inp("CONFIG_PATH", "");
   const workdir = inp("WORKING_DIRECTORY", ".") || ".";
   const baseInput = inp("BASE", "");
@@ -152,6 +160,8 @@ async function main() {
 
   if (!["gates", "all", "never"].includes(failOn)) throw new Error(`bad fail-on: ${failOn}`);
   if (!["both", "summary", "annotations", "none"].includes(commentMode)) throw new Error(`bad comment-mode: ${commentMode}`);
+  if (!["files", "hunks", "whole"].includes(granularity)) throw new Error(`bad granularity: ${granularity}`);
+  if (!/^\d+$/.test(maxScopes) || Number(maxScopes) < 1) throw new Error(`bad max-scopes: ${maxScopes}`);
 
   const event = await loadEvent();
   const pr = event.pull_request;
@@ -213,6 +223,9 @@ async function main() {
   }
 
   const engineArgs = [...cmdArgs, "review", "--diff", `${base}...${head}`, "--suites", suites, "--fail-on", "never", "--json"];
+  if (granularity === "files") engineArgs.push("--files");
+  if (granularity === "hunks") engineArgs.push("--hunks");
+  if (granularity !== "whole") engineArgs.push("--max-hunks", maxScopes);
   const gateThreshold = inp("GATE_THRESHOLD", "");
   const advisoryThreshold = inp("ADVISORY_THRESHOLD", "");
   if (gateThreshold) engineArgs.push("--gate-threshold", gateThreshold);

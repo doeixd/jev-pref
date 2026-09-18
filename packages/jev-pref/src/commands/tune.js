@@ -8,7 +8,7 @@ import { readdir, readFile } from "node:fs/promises";
 import { join } from "node:path";
 import { boolFlag, InvalidArgs, strFlag } from "../args.js";
 import { resolveApiKey, resolveConfig, validateConfig } from "../config.js";
-import { buildQuestions } from "../suites/prefs.js";
+import { buildQuestions, describePreference } from "../suites/prefs.js";
 
 const SWEEP = [0.5, 0.6, 0.7, 0.8, 0.9];
 
@@ -71,7 +71,9 @@ export async function tune(argv, { cwd = ".", out = console } = {}) {
     return 2;
   }
 
-  // expected: { [prefId]: true(violation)|false } — accuracy = P>=t matches expected.
+  // expected: condition prefs use true(violation)|false; choice prefs use a
+  // configured label. Threshold sweeps affect conditions; choices use exact
+  // label accuracy and report their selected-label probability.
   const cases = evals.filter((e) => !e.error && typeof e.diff === "string" && e.expected && typeof e.expected === "object");
   for (const e of evals) {
     if (e.error || typeof e.diff !== "string" || !e.expected) {
@@ -92,8 +94,8 @@ export async function tune(argv, { cwd = ".", out = console } = {}) {
   // Lazy client: --dry-run above already returned, so keyless previews never
   // require advocaat to be installed.
   const { evaluate } = await import("../jev.js");
-  const state = (c) => ({ prefs: config.prefs.map((p) => `${p.id}: ${p.text}`), diff: c.diff });
-  const probs = {}; // file -> { prefId -> P }
+  const state = (c) => ({ prefs: config.prefs.map(describePreference), diff: c.diff });
+  const results = {}; // file -> { prefId -> { probability, choice? } }
   for (const c of cases) {
     let answers;
     try {
@@ -102,9 +104,14 @@ export async function tune(argv, { cwd = ".", out = console } = {}) {
       out.error(`review-error: eval ${c.file}: ${e.message}`);
       return 2;
     }
-    probs[c.file] = Object.fromEntries(
-      config.prefs.map((p) => [p.id, answers[`pref_${p.id}`]?.chance ?? 0]),
-    );
+    results[c.file] = Object.fromEntries(config.prefs.map((p) => {
+      const answer = answers[`pref_${p.id}`] ?? {};
+      const choice = answer.choice;
+      const probability = p.type === "choice"
+        ? answer.probabilities?.[choice] ?? answer.confidence ?? 0
+        : answer.chance ?? 0;
+      return [p.id, { probability, choice }];
+    }));
   }
 
   const accuracy = (threshold) => {
@@ -115,7 +122,10 @@ export async function tune(argv, { cwd = ".", out = console } = {}) {
         const expected = c.expected[p.id];
         if (expected === undefined) continue;
         total++;
-        if ((probs[c.file][p.id] >= threshold) === !!expected) hit++;
+        const result = results[c.file][p.id];
+        if (p.type === "choice") {
+          if (typeof expected === "string" && result.choice === expected) hit++;
+        } else if ((result.probability >= threshold) === !!expected) hit++;
       }
     }
     return total === 0 ? null : hit / total;

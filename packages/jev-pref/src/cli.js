@@ -21,15 +21,18 @@ const HELP = `jev-pref — Jev-powered user-preference code reviewer
 Usage: jev-pref <command> [options]
 
 Commands:
+  setup     teach a coding agent how to configure this repository
+  sync      teach an agent to reconcile guidance and Jev policy
   review    judge the diff with Jev (working tree, --staged, --diff, --pr)
-  init      write jev-pref.json + wire the run instruction into agent files
   tune      calibrate thresholds against evals/
   doctor    sanity check (node, git, keys, config)
+  examples  print copyable integration recipes
+  init      deprecated alias; points agents to setup
   help [command] | --help | -h
   version | --version | -V
 
-Config precedence: flags > JEV_* env > jev-pref.json > CLAUDE.md/AGENTS.md
-fenced block > defaults. Keys are env-only (JEV_API_KEY, else advocaat's
+Config precedence: flags > JEV_* env > jev-pref.local.json > jev-pref.json >
+agent-file fenced block > defaults. Keys are env-only (JEV_API_KEY, else advocaat's
 TYPESAFE_API_KEY → AI_GATEWAY_API_KEY → VERCEL_OIDC_TOKEN cascade).
 
 Exit codes: 0 approve/ok, 1 gate violated, 2 infra/config/usage error.
@@ -39,10 +42,12 @@ Run \`jev-pref <command> --help\` for command details and full semantics.
 // Per-command known flags (long names plus single-char shorts the command
 // honors). Unknown flags are rejected (exit 2), never silently ignored.
 const KNOWN_FLAGS = {
+  setup: new Set(["help", "h"]),
+  sync: new Set(["help", "h"]),
   review: new Set([
-    "diff", "staged", "pr", "suites", "json", "dry-run", "n", "hunks", "no-hunks",
+    "diff", "staged", "pr", "suites", "json", "dry-run", "n", "hunks", "no-hunks", "files", "no-files",
     "max-hunks", "include", "exclude", "agent-cmd", "agent-input", "agent-on",
-    "agent-timeout-ms", "gate-threshold", "advisory-threshold", "severity-fail",
+    "agent-timeout-ms", "gate-threshold", "advisory-threshold",
     "fail-on", "config", "model", "base-url", "provider", "timeout-ms",
     "max-diff-chars", "help", "h",
   ]),
@@ -52,6 +57,7 @@ const KNOWN_FLAGS = {
   ]),
   tune: new Set(["sweep", "check", "evals-dir", "dry-run", "config", "help", "h"]),
   doctor: new Set(["verbose", "v", "config", "help", "h"]),
+  examples: new Set(["help", "h"]),
 };
 
 function rejectUnknownFlags(cmd, flags, out) {
@@ -130,12 +136,19 @@ export async function run(argv, { cwd = process.cwd(), out = console } = {}) {
     switch (cmd) {
       case "review":
         return await (await import("./commands/review.js")).review(parsed, ctx);
+      case "setup":
+        return await (await import("./commands/setup.js")).setup(parsed, ctx);
+      case "sync":
+        return await (await import("./commands/sync.js")).sync(parsed, ctx);
       case "doctor":
         return await (await import("./commands/doctor.js")).doctor(parsed, ctx);
       case "init":
-        return await (await import("./commands/init.js")).init(parsed, ctx);
+        out.log("`jev-pref init` has been replaced by agent-assisted setup. No files were changed.\n\nRun:\n\n  npx jev-pref setup\n\nand follow the instructions it prints.");
+        return 0;
       case "tune":
         return await (await import("./commands/tune.js")).tune(parsed, ctx);
+      case "examples":
+        return await (await import("./commands/examples.js")).examples(parsed, ctx);
       default:
         out.error(`review-error: unknown command ${JSON.stringify(cmd)} (see: jev-pref help)`);
         return 2;

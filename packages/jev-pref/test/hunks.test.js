@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
-import { hunkLabel, splitHunks } from "../src/hunks.js";
+import { hunkLabel, splitFiles, splitHunks } from "../src/hunks.js";
 
 const DIFF = [
   "diff --git a/a.ts b/a.ts",
@@ -72,5 +72,18 @@ describe("splitHunks", () => {
   it("returns [] for empty diffs", () => {
     assert.deepEqual(splitHunks(""), []);
     assert.deepEqual(splitHunks("nothing here\n"), []);
+  });
+});
+
+describe("splitFiles", () => {
+  it("keeps complete file diffs and follows the new rename path", () => {
+    const diff = [
+      "diff --git a/a.js b/a.js", "--- a/a.js", "+++ b/a.js", "@@ -1 +1 @@", "-a", "+b",
+      "diff --git a/old.js b/new.js", "similarity index 90%", "--- a/old.js", "+++ b/new.js", "@@ -1 +1 @@", "-x", "+y",
+    ].join("\n");
+    const files = splitFiles(diff);
+    assert.deepEqual(files.map((f) => f.file), ["a.js", "new.js"]);
+    assert.match(files[0].body, /@@ -1 \+1 @@/);
+    assert.match(files[1].body, /similarity index/);
   });
 });

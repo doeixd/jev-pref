@@ -21,6 +21,34 @@ describe("cli dispatcher", () => {
     assert.ok(logs.join("\n").includes("--diff"));
     const r2 = mockOut();
     assert.equal(await run(["review", "--help"], { cwd: ".", out: r2.out }), 0);
+    const r3 = mockOut();
+    assert.equal(await run(["setup", "--help"], { cwd: ".", out: r3.out }), 0);
+    assert.ok(r3.logs.join("\n").includes("read-only") || r3.logs.join("\n").includes("does not"));
+    const r4 = mockOut();
+    assert.equal(await run(["sync", "--help"], { cwd: ".", out: r4.out }), 0);
+    assert.match(r4.logs.join("\n"), /bidirectional/);
+  });
+
+  it("prints the sync protocol", async () => {
+    const { out, logs } = mockOut();
+    assert.equal(await run(["sync"], { cwd: ".", out }), 0);
+    assert.match(logs.join("\n"), /living preference contract/);
+  });
+
+  it("keeps init as a non-writing migration alias", async () => {
+    const { out, logs } = mockOut();
+    assert.equal(await run(["init"], { out }), 0);
+    assert.match(logs.join("\n"), /npx jev-pref setup/);
+    assert.match(logs.join("\n"), /No files were changed/);
+  });
+
+  it("lists and prints integration examples", async () => {
+    const list = mockOut();
+    assert.equal(await run(["examples"], { out: list.out }), 0);
+    assert.match(list.logs.join("\n"), /review-script/);
+    const recipe = mockOut();
+    assert.equal(await run(["examples", "agent-loop"], { out: recipe.out }), 0);
+    assert.match(recipe.logs.join("\n"), /substantial bout/);
   });
 
   it("rejects unknown commands and flags", async () => {

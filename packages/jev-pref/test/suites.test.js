@@ -7,20 +7,24 @@ const prefs = [
   { id: "gate_one", gate: true, text: "Gate." },
   { id: "note_one", gate: false, text: "Note." },
 ];
-const cfg = { gateThreshold: 0.7, advisoryThreshold: 0.7, severityFail: 1.5 };
+const cfg = { gateThreshold: 0.7, advisoryThreshold: 0.6 };
 
 describe("prefs suite", () => {
-  it("namespaces one noul per pref plus severity/next", () => {
+  it("creates only the user-defined preference questions", () => {
     const q = buildQuestions(prefs);
-    assert.ok(q.pref_gate_one && q.pref_note_one && q.pref_severity && q.pref_next);
+    assert.deepEqual(Object.keys(q), ["pref_gate_one", "pref_note_one"]);
   });
 
-  it("gates on gate violations; next never overrides a gate", () => {
+  it("uses judgment-shaped question text directly", () => {
+    const text = "Does this change introduce mutable module-level state?";
+    const q = buildQuestions([{ id: "simple", gate: false, text }]);
+    assert.equal(q.pref_simple.instructions, `${text} Answer true only when the defined condition is visible in the supplied change.`);
+  });
+
+  it("gates only on an explicit gate condition crossing its threshold", () => {
     const v = judge(prefs, {
       pref_gate_one: { chance: 0.9 },
       pref_note_one: { chance: 0 },
-      pref_severity: { score: 0 },
-      pref_next: { choice: "approve" }, // model disagrees — gate still wins
     }, cfg);
     assert.equal(v.outcome, "fix_now");
     assert.equal(v.failures.length, 1);
@@ -30,8 +34,6 @@ describe("prefs suite", () => {
     const v = judge(prefs, {
       pref_gate_one: { chance: 0 },
       pref_note_one: { chance: 0.95 },
-      pref_severity: { score: 1 },
-      pref_next: { choice: "advisory" },
     }, cfg);
     assert.equal(v.outcome, "advisory");
     assert.deepEqual(v.failures, []);
@@ -43,13 +45,41 @@ describe("prefs suite", () => {
     assert.equal(v.outcome, "approve");
   });
 
-  it("severity forces fix_now even without a gate hit", () => {
-    const v = judge(prefs, {
-      pref_gate_one: { chance: 0 },
-      pref_severity: { score: 2 },
-      pref_next: { choice: "other" },
+  it("maps choice labels to outcomes in code and preserves confidence", () => {
+    const choices = [{
+      id: "api_change",
+      type: "choice",
+      question: "Classify the public API impact.",
+      labels: { none: "No change", behavioral: "Behavior changes", breaking: "Incompatible" },
+      outcomes: { none: "approve", behavioral: "advisory", breaking: "fix_now" },
+    }];
+    const q = buildQuestions(choices);
+    assert.equal(q.pref_api_change.type, "choice");
+    assert.deepEqual(q.pref_api_change.criteria, choices[0].labels);
+    const v = judge(choices, {
+      pref_api_change: {
+        choice: "breaking",
+        confidence: 0.8,
+        probabilities: { none: 0.05, behavioral: 0.1, breaking: 0.85 },
+      },
     }, cfg);
     assert.equal(v.outcome, "fix_now");
+    assert.deepEqual(v.classifications[0], {
+      id: "api_change", label: "breaking", probability: 0.85, confidence: 0.8, outcome: "fix_now",
+    });
+  });
+
+  it("surfaces a lower-confidence gate label as advisory when thresholds differ", () => {
+    const choices = [{
+      id: "state_kind", type: "choice", question: "Classify state.",
+      labels: { local: "Local", shared: "Shared mutable" },
+      outcomes: { local: "approve", shared: "fix_now" },
+    }];
+    const v = judge(choices, {
+      pref_state_kind: { choice: "shared", probabilities: { local: 0.35, shared: 0.65 } },
+    }, cfg);
+    assert.equal(v.outcome, "advisory");
+    assert.match(v.notes[0], /uncertain gate/);
   });
 });
 

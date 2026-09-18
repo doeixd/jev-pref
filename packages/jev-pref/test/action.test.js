@@ -1,4 +1,5 @@
 import assert from "node:assert/strict";
+import { readFileSync } from "node:fs";
 import { describe, it } from "node:test";
 import { commentBody, globToRegExp, normalizeVerdict, splitList } from "../../../actions/review/scripts/review-pr.js";
 import { assertSafeRef, SAFE_REF, UnsafeRefError } from "../src/git.js";
@@ -19,6 +20,15 @@ describe("git ref safety", () => {
 });
 
 describe("action driver units", () => {
+  it("keeps YAML plain scalars free of unquoted mapping separators", () => {
+    const manifest = readFileSync(new URL("../../../actions/review/action.yml", import.meta.url), "utf8");
+    for (const [index, line] of manifest.split(/\r?\n/).entries()) {
+      const value = line.match(/^\s+[A-Za-z0-9_-]+:\s+(.+)$/)?.[1];
+      if (!value || value.startsWith('"') || value.startsWith("'")) continue;
+      assert.doesNotMatch(value, /:\s/, `line ${index + 1} needs quotes around its YAML scalar`);
+    }
+  });
+
   it("splitList handles csv + newlines", () => {
     assert.deepEqual(splitList("a,b\nc\nd"), ["a", "b", "c", "d"]);
   });
@@ -48,6 +58,36 @@ describe("action driver units", () => {
     assert.equal(v.suites.length, 1);
     assert.ok(v.suites[0].failures[0].startsWith("[a.ts:1-3]"));
     assert.equal(v.suites[0].outcome, "fix_now");
+  });
+
+  it("normalizeVerdict aggregates file scopes", () => {
+    const v = normalizeVerdict({
+      outcome: "advisory",
+      scopes: [
+        { label: "src/a.ts", outcome: "advisory", suites: [{ suite: "prefs", outcome: "advisory", failures: [], notes: ["consider x"] }] },
+      ],
+      files: ["src/a.ts"],
+    });
+    assert.equal(v.outcome, "advisory");
+    assert.equal(v.suites[0].notes[0], "[src/a.ts] consider x");
+  });
+
+  it("keeps fixed classifications and their scope in Action comments", () => {
+    const v = normalizeVerdict({
+      outcome: "approve",
+      scopes: [{
+        label: "src/api.ts",
+        outcome: "approve",
+        suites: [{
+          suite: "prefs", outcome: "approve", failures: [], notes: [],
+          classifications: [{ id: "api_change", label: "additive", probability: 0.91, confidence: 0.82, outcome: "approve" }],
+        }],
+      }],
+      files: ["src/api.ts"],
+    });
+    assert.equal(v.suites[0].classifications[0].scope, "src/api.ts");
+    const body = commentBody({ outcome: v.outcome, suites: v.suites, base: "abc", head: "def", runUrl: "" });
+    assert.match(body, /\[src\/api\.ts\] api_change=additive P=0\.91 confidence=0\.82 → approve/);
   });
 
   it("commentBody truncates to GitHub limits", () => {

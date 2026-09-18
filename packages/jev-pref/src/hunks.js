@@ -60,6 +60,38 @@ export function splitHunks(diff) {
   return hunks;
 }
 
+/** Split a unified diff into complete per-file sections. */
+export function splitFiles(diff) {
+  const files = [];
+  let current = null;
+  const flush = () => {
+    if (!current) return;
+    current.body = current.lines.join("\n");
+    delete current.lines;
+    files.push(current);
+    current = null;
+  };
+  for (const line of diff.split("\n")) {
+    if (line.startsWith("diff --git ")) {
+      flush();
+      const parts = tokenizeGitDiffLine(line.slice("diff --git ".length));
+      current = {
+        file: dequote(parts[parts.length - 1] ?? "").replace(/^b\//, "") || "(unknown)",
+        lines: [line],
+      };
+      continue;
+    }
+    if (!current) continue;
+    if (line.startsWith("+++ ")) {
+      const name = dequote(line.slice(4).trim());
+      if (name !== "/dev/null") current.file = name.replace(/^b\//, "");
+    }
+    current.lines.push(line);
+  }
+  flush();
+  return files;
+}
+
 /** Split a `diff --git` remainder into paths, honoring C-style quotes. */
 function tokenizeGitDiffLine(s) {
   const out = [];

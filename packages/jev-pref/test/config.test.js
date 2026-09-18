@@ -5,7 +5,7 @@ import { join } from "node:path";
 import { afterEach, describe, it } from "node:test";
 import { DEFAULTS, extractFencedBlock, resolveConfig, validateConfig } from "../src/config.js";
 
-const ENV_KEYS = ["JEV_SUITES", "JEV_GATE_THRESHOLD", "JEV_HUNKS", "JEV_CONFIG"];
+const ENV_KEYS = ["JEV_SUITES", "JEV_GATE_THRESHOLD", "JEV_HUNKS", "JEV_FILES", "JEV_CONFIG"];
 const savedEnv = {};
 for (const k of ENV_KEYS) savedEnv[k] = process.env[k];
 afterEach(() => {
@@ -33,6 +33,21 @@ describe("validateConfig", () => {
     assert.ok(validateConfig(valid({ provider: "nope" })).some((e) => e.includes("provider")));
     assert.ok(validateConfig(valid({ agent: { command: [] } })).some((e) => e.includes("agent.command")));
     assert.ok(validateConfig(valid({ agent: { command: ["x"], on: [] } })).some((e) => e.includes("agent.on")));
+    assert.ok(validateConfig(valid({ hunks: true, files: true })).some((e) => e.includes("must not both")));
+  });
+
+  it("validates evidence conditions and fixed choice taxonomies", () => {
+    const choice = {
+      id: "api_change",
+      type: "choice",
+      question: "Classify the public API impact.",
+      labels: { none: "No change", breaking: "Incompatible change" },
+      outcomes: { none: "approve", breaking: "fix_now" },
+    };
+    assert.deepEqual(validateConfig(valid({ prefs: [choice] })), []);
+    assert.ok(validateConfig(valid({ prefs: [{ ...choice, gate: true }] })).some((e) => e.includes("gate is not used")));
+    assert.ok(validateConfig(valid({ prefs: [{ ...choice, outcomes: { none: "approve" } }] })).some((e) => e.includes("exactly match")));
+    assert.ok(validateConfig(valid({ prefs: [{ id: "vague", gate: false }] })).some((e) => e.includes("needs a non-empty question")));
   });
 });
 
@@ -52,7 +67,7 @@ describe("extractFencedBlock", () => {
 });
 
 describe("resolveConfig", () => {
-  it("merges flags > env > json > fenced > defaults and reports ignored keys", async () => {
+  it("merges flags > env > project json > fenced > defaults and reports ignored keys", async () => {
     const dir = await mkdtemp(join(tmpdir(), "jev-cfg-"));
     try {
       await writeFile(join(dir, "jev-pref.json"), JSON.stringify({
@@ -73,6 +88,72 @@ describe("resolveConfig", () => {
       assert.equal(config.advisoryThreshold, 0.6); // fenced
       assert.deepEqual(ignored.json, ["gateTreshold"]);
       assert.deepEqual(ignored.fenced, []);
+    } finally {
+      await rm(dir, { recursive: true, force: true });
+    }
+  });
+
+  it("merges local prefs by id and lets local settings override project settings", async () => {
+    const dir = await mkdtemp(join(tmpdir(), "jev-cfg-"));
+    try {
+      await writeFile(join(dir, "jev-pref.json"), JSON.stringify({
+        gateThreshold: 0.7,
+        hunks: false,
+        prefs: [
+          { id: "shared", gate: true, text: "Shared rule." },
+          { id: "overridden", gate: false, text: "Project wording." },
+        ],
+      }));
+      await writeFile(join(dir, "jev-pref.local.json"), JSON.stringify({
+        gateThreshold: 0.8,
+        hunks: false,
+        localOnlyTypo: true,
+        prefs: [
+          { id: "overridden", gate: false, text: "Personal wording." },
+          { id: "personal", gate: false, text: "Personal rule." },
+        ],
+      }));
+
+      process.env.JEV_HUNKS = "true";
+      const result = await resolveConfig({ rootDir: dir, flags: {} });
+      assert.equal(result.config.gateThreshold, 0.8);
+      assert.equal(result.sources.gateThreshold, "local");
+      assert.equal(result.config.hunks, true);
+      assert.equal(result.sources.hunks, "env");
+      assert.deepEqual(result.config.prefs.map((p) => p.id), ["shared", "overridden", "personal"]);
+      assert.equal(result.config.prefs[1].text, "Personal wording.");
+      assert.equal(result.sources.prefs, "project+local");
+      assert.equal(result.localConfigFound, true);
+      assert.equal(result.localConfigPath, join(dir, "jev-pref.local.json"));
+      assert.deepEqual(result.ignored.local, ["localOnlyTypo"]);
+    } finally {
+      await rm(dir, { recursive: true, force: true });
+    }
+  });
+
+  it("supports a standalone personal config", async () => {
+    const { execFile } = await import("node:child_process");
+    const { promisify } = await import("node:util");
+    const git = promisify(execFile);
+    const dir = await mkdtemp(join(tmpdir(), "jev-cfg-"));
+    try {
+      await git("git", ["init"], { cwd: dir });
+      await writeFile(join(dir, "jev-pref.local.json"), JSON.stringify({ prefs: goodPrefs }));
+      const { config, localConfigFound, localConfigPath } = await resolveConfig({ rootDir: join(dir), flags: {} });
+      assert.deepEqual(config.prefs, goodPrefs);
+      assert.equal(localConfigFound, true);
+      assert.equal(localConfigPath, join(dir, "jev-pref.local.json"));
+    } finally {
+      await rm(dir, { recursive: true, force: true });
+    }
+  });
+
+  it("fails loud on a broken local config", async () => {
+    const dir = await mkdtemp(join(tmpdir(), "jev-cfg-"));
+    try {
+      await writeFile(join(dir, "jev-pref.json"), JSON.stringify({ prefs: goodPrefs }));
+      await writeFile(join(dir, "jev-pref.local.json"), "{broken");
+      await assert.rejects(resolveConfig({ rootDir: dir, flags: {} }), /invalid JSON.*jev-pref\.local\.json/);
     } finally {
       await rm(dir, { recursive: true, force: true });
     }

@@ -5,8 +5,17 @@
   "advisoryThreshold": 0.7,
   "failOn": "gates",
   "prefs": [
-    { "id": "no_real_keys", "gate": false, "text": "Docs, comments, and examples must not contain real API keys or tokens." },
-    { "id": "skill_layout", "gate": false, "text": "New skills live under skills/<name>/ with SKILL.md carrying name and description frontmatter." },
-    { "id": "skill_lean", "gate": false, "text": "SKILL.md bodies stay under ~500 lines with details in references/ (validate-skills warns otherwise)." }
+    {
+      "id": "no_real_keys",
+      "gate": false,
+      "question": "Does this change add a real API key or token to documentation, comments, or examples?",
+      "guidance": "Count concrete credential values. Do not count environment-variable names, redacted values, or obvious placeholders."
+    },
+    {
+      "id": "skill_layout",
+      "gate": false,
+      "question": "Does this change add a skill outside skills/<name>/ or add a skill whose SKILL.md lacks name and description frontmatter?",
+      "guidance": "Only evaluate newly added or relocated skills visible in the change."
+    }
   ]
 }

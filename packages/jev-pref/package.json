@@ -1,10 +1,10 @@
 {
   "name": "jev-pref",
-  "version": "0.1.2",
-  "description": "Jev-powered user-preference code reviewer: init, review, tune, doctor",
+  "version": "0.2.0",
+  "description": "AI linter for project-defined semantic checks on code changes",
   "type": "module",
   "bin": {
-    "jev-pref": "./bin/jev-pref.js"
+    "jev-pref": "bin/jev-pref.js"
   },
   "dependencies": {
     "advocaat": "0.0.2"
@@ -12,12 +12,29 @@
   "engines": {
     "node": ">=20"
   },
+  "keywords": [
+    "jev",
+    "semantic-linter",
+    "code-review",
+    "coding-agent",
+    "ai"
+  ],
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/doeixd/jev-pref.git",
+    "directory": "packages/jev-pref"
+  },
+  "homepage": "https://github.com/doeixd/jev-pref#readme",
+  "bugs": {
+    "url": "https://github.com/doeixd/jev-pref/issues"
+  },
   "scripts": {
     "test": "node --test test/*.test.js"
   },
   "files": [
     "bin/",
     "src/",
+    "examples/",
     "schema.json",
     "README.md"
   ],

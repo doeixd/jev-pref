@@ -1,16 +1,16 @@
 {
   "$schema": "http://json-schema.org/draft-07/schema#",
-  "title": "jev-pref config",
+  "title": "jev-pref project-defined semantic checks",
   "type": "object",
   "properties": {
     "suites": { "type": "array", "items": { "type": "string" }, "default": ["prefs"] },
     "gateThreshold": { "type": "number", "minimum": 0, "maximum": 1, "default": 0.7 },
     "advisoryThreshold": { "type": "number", "minimum": 0, "maximum": 1, "default": 0.7 },
-    "severityFail": { "type": "number", "minimum": 0, "default": 1.5 },
     "failOn": { "type": "string", "enum": ["gates", "all", "never"], "default": "gates" },
     "timeoutMs": { "type": "integer", "minimum": 1, "default": 60000 },
-    "maxDiffChars": { "type": "integer", "minimum": 1, "default": 24000 },
+    "maxDiffChars": { "type": "integer", "minimum": 1, "default": 20000, "description": "Maximum diff characters per Jev request; keep conservative for Jev's 30k-token total input limit." },
     "hunks": { "type": "boolean", "default": false },
+    "files": { "type": "boolean", "default": false },
     "maxHunks": { "type": "integer", "minimum": 1, "default": 10 },
     "include": { "type": "array", "items": { "type": "string" }, "default": [] },
     "exclude": { "type": "array", "items": { "type": "string" }, "default": [] },
@@ -33,13 +33,41 @@
       "type": "array",
       "default": [],
       "items": {
-        "type": "object",
-        "required": ["id", "gate", "text"],
-        "properties": {
-          "id": { "type": "string", "pattern": "^[a-z0-9]+(_[a-z0-9]+)*$" },
-          "gate": { "type": "boolean" },
-          "text": { "type": "string", "minLength": 1 }
-        }
+        "oneOf": [
+          {
+            "type": "object",
+            "required": ["id", "gate"],
+            "properties": {
+              "id": { "type": "string", "pattern": "^[a-z0-9]+(_[a-z0-9]+)*$" },
+              "type": { "const": "condition" },
+              "gate": { "type": "boolean" },
+              "question": { "type": "string", "minLength": 1 },
+              "guidance": { "type": "string", "minLength": 1 },
+              "text": { "type": "string", "minLength": 1, "description": "Legacy condition wording; prefer question." }
+            },
+            "anyOf": [{ "required": ["question"] }, { "required": ["text"] }]
+          },
+          {
+            "type": "object",
+            "required": ["id", "type", "question", "labels", "outcomes"],
+            "properties": {
+              "id": { "type": "string", "pattern": "^[a-z0-9]+(_[a-z0-9]+)*$" },
+              "type": { "const": "choice" },
+              "question": { "type": "string", "minLength": 1 },
+              "guidance": { "type": "string", "minLength": 1 },
+              "labels": {
+                "type": "object",
+                "minProperties": 2,
+                "maxProperties": 255,
+                "additionalProperties": { "type": "string", "minLength": 1 }
+              },
+              "outcomes": {
+                "type": "object",
+                "additionalProperties": { "type": "string", "enum": ["approve", "advisory", "fix_now"] }
+              }
+            }
+          }
+        ]
       }
     }
   }
