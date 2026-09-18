@@ -54,6 +54,11 @@
       "type": "boolean",
       "default": false
     },
+    "raw": {
+      "type": "boolean",
+      "default": false,
+      "description": "Observation mode: report raw probabilities without applying verdicts; always exits 0 on success."
+    },
     "maxHunks": {
       "type": "integer",
       "minimum": 1,

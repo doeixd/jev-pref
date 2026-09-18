@@ -58,6 +58,7 @@ export const DEFAULTS = {
   maxDiffChars: 20000,
   hunks: false,
   files: false,
+  raw: false,
   maxHunks: 10,
   include: [],
   exclude: [],
@@ -77,6 +78,7 @@ const ENV_MAP = [
   ["JEV_TIMEOUT_MS", "timeoutMs", Number],
   ["JEV_MAX_DIFF_CHARS", "maxDiffChars", Number],
   ["JEV_HUNKS", "hunks", (v) => ["1", "true", "yes"].includes(v.toLowerCase())],
+  ["JEV_RAW", "raw", (v) => ["1", "true", "yes"].includes(v.toLowerCase())],
   ["JEV_FILES", "files", (v) => ["1", "true", "yes"].includes(v.toLowerCase())],
   ["JEV_MAX_HUNKS", "maxHunks", Number],
   ["JEV_INCLUDE", "include", (v) => v.split(",").map((s) => s.trim()).filter(Boolean)],
@@ -371,6 +373,7 @@ export function validateConfig(config) {
   }
   if (typeof config.hunks !== "boolean") errors.push("hunks must be boolean");
   if (typeof config.files !== "boolean") errors.push("files must be boolean");
+  if (typeof config.raw !== "boolean") errors.push("raw must be boolean");
   if (config.hunks && config.files) errors.push("hunks and files must not both be true");
   for (const k of ["include", "exclude"]) {
     if (!Array.isArray(config[k]) || config[k].some((g) => typeof g !== "string")) {

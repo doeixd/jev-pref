@@ -46,7 +46,7 @@ const KNOWN_FLAGS = {
   sync: new Set(["help", "h"]),
   review: new Set([
     "diff", "staged", "pr", "suites", "json", "dry-run", "n", "hunks", "no-hunks", "files", "no-files",
-    "max-hunks", "include", "exclude", "agent-cmd", "agent-input", "agent-on",
+    "raw", "no-raw", "max-hunks", "include", "exclude", "agent-cmd", "agent-input", "agent-on",
     "agent-timeout-ms", "gate-threshold", "advisory-threshold",
     "fail-on", "config", "model", "base-url", "provider", "timeout-ms",
     "max-diff-chars", "help", "h",

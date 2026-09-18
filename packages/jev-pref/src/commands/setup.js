@@ -247,7 +247,9 @@ Jev has a 30k-token input limit, including state and questions. Prefer reviewing
 small changes. Use --hunks for file:line scopes, --files for one bounded scope
 per file, and --include/--exclude to narrow large changes. Use --json when
 another program consumes the result (canonical key: scopes; advisoryCount
-distinguishes advisory-only from clean). jev-pref never treats a truncated
+distinguishes advisory-only from clean). Use --raw when the agent should
+interpret raw probabilities itself (no verdict, always exit 0 on success).
+jev-pref never treats a truncated
 partial diff as approval.
 
   exit 0   approved, or advisory-only when failOn is "gates"

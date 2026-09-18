@@ -19,6 +19,25 @@ export function buildQuestions() {
   };
 }
 
+const QUESTIONS = [
+  ["sec_leak", "Possible secret", "Does the diff introduce a hardcoded secret, key, token, or credential?"],
+  ["sec_pii", "Possible personal data", "Does the diff introduce real-looking personal data?"],
+];
+
+/** Observation form: raw probabilities with the gate cutoff beside them. */
+export function rawResults(answers, { gateThreshold }) {
+  return QUESTIONS.map(([id, name, question]) => ({
+    id,
+    name,
+    kind: "condition",
+    scope: "hunk",
+    question,
+    probability: answers[id]?.chance ?? 0,
+    gate: true,
+    cutoff: gateThreshold,
+  }));
+}
+
 export function judge(answers, { gateThreshold }) {
   const failures = [];
   for (const [key, label] of [["sec_leak", "possible secret"], ["sec_pii", "possible personal data"]]) {

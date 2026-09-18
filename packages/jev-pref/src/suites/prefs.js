@@ -96,6 +96,7 @@ function probabilityOf(answer) {
 
 /** Advocaat answers nouls as { chance }; choices as { choice, confidence, probabilities }. */
 export function judge(prefs, answers, { gateThreshold, advisoryThreshold }) {
+
   const failures = [];
   const notes = [];
   const classifications = [];
@@ -130,4 +131,33 @@ export function judge(prefs, answers, { gateThreshold, advisoryThreshold }) {
   if (failures.length > 0) return { outcome: "fix_now", failures, notes, classifications };
   if (notes.length > 0) return { outcome: "advisory", failures, notes, classifications };
   return { outcome: "approve", failures, notes, classifications };
+}
+
+/**
+ * Observation form: one record per pref with the raw Jev numbers and the
+ * configured policy beside them, but no verdict applied. The caller decides.
+ */
+export function rawResults(prefs, answers, { gateThreshold, advisoryThreshold }) {
+  return (prefs ?? []).map((pref) => {
+    const answer = answers[`pref_${pref.id}`] ?? {};
+    const base = {
+      id: pref.id,
+      ...(typeof pref.name === "string" && pref.name.length > 0 ? { name: pref.name } : {}),
+      kind: kind(pref),
+      scope: prefScope(pref),
+      question: question(pref),
+      probability: probabilityOf(answer),
+    };
+    if (kind(pref) === "choice") {
+      const label = typeof answer.choice === "string" ? answer.choice : null;
+      return {
+        ...base,
+        label,
+        confidence: typeof answer.confidence === "number" ? answer.confidence : undefined,
+        outcomes: pref.outcomes,
+        cutoff: label !== null && pref.outcomes?.[label] === "fix_now" ? gateThreshold : advisoryThreshold,
+      };
+    }
+    return { ...base, gate: !!pref.gate, cutoff: pref.gate ? gateThreshold : advisoryThreshold };
+  });
 }

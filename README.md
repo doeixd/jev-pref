@@ -574,6 +574,18 @@ Produce machine-readable output:
 npx jev-pref review --json
 ```
 
+Skip the verdict and let the agent interpret raw numbers:
+
+```bash
+npx jev-pref review --hunks --raw
+```
+
+Raw mode prints a short intro explaining the numbers, then one line per
+pref per scope (`P`, `confidence`, and that line's cutoff). It applies no
+`approve`/`advisory`/`fix_now` outcome, skips the agent handoff, ignores
+`--fail-on`, and always exits 0 on success. Verdicts stay the default:
+CI, hooks, and scripts should keep relying on the exit-code contract.
+
 ### `jev-pref sync`
 
 ```bash

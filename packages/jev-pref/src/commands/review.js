@@ -79,6 +79,42 @@ function judgeSuites(config, answers, prefs = config.prefs) {  return config.sui
   });
 }
 
+/** Observation form: raw per-pref records with policy context, no verdict. */
+function rawSuites(config, answers, prefs = config.prefs) {
+  const out = [];
+  for (const suiteId of config.suites) {
+    if (suiteId === "prefs") {
+      for (const r of prefsSuite.rawResults(prefs, answers, config)) out.push({ ...r, suite: "prefs" });
+    } else {
+      for (const r of SUITES[suiteId].rawResults?.(answers, config) ?? []) out.push({ ...r, suite: suiteId });
+    }
+  }
+  return out;
+}
+
+export const RAW_INTRO = "raw probabilities — no verdict applied. P estimates how likely the condition holds (conditions) or the selected label is right (choices). Confidence is strength of belief and never decides anything. Each line shows its cutoff (your gate/advisory threshold); compare P against it yourself.";
+
+// Exported for unit tests (pure rendering, no IO).
+export function renderRaw(rawScopes, { gateThreshold, advisoryThreshold }) {
+  const lines = [
+    RAW_INTRO,
+    `cutoffs: gate=${Number(gateThreshold).toFixed(2)}, advisory=${Number(advisoryThreshold).toFixed(2)}`,
+    "",
+  ];
+  for (const s of rawScopes ?? []) {
+    const tag = s.label ? `[${s.label}] ` : "";
+    for (const r of s.results ?? []) {
+      const who = r.name ? `${r.name} (${r.id})` : r.id;
+      const confidence = r.confidence === undefined ? "" : ` confidence=${r.confidence.toFixed(2)}`;
+      const what = r.kind === "choice"
+        ? `${who}=${r.label ?? "(no label)"} P=${r.probability.toFixed(2)}${confidence} cutoff=${r.cutoff.toFixed(2)} outcomes=${Object.entries(r.outcomes ?? {}).map(([l, o]) => `${l}->${o}`).join(", ")}`
+        : `${who} P=${r.probability.toFixed(2)} cutoff=${r.cutoff.toFixed(2)} ${r.gate ? "gate" : "advisory"}`;
+      lines.push(`- ${tag}${what} — ${r.question}`);
+    }
+  }
+  return lines.join("\n");
+}
+
 /** Presentable question map: Jev wire type "noul" is a condition. */
 export function displayQuestions(questions) {
   const out = {};
@@ -210,12 +246,18 @@ export async function review(argv, { cwd = ".", out = console } = {}) {
   const noHunksFlag = boolFlag(flags, "no-hunks");
   const filesFlag = boolFlag(flags, "files");
   const noFilesFlag = boolFlag(flags, "no-files");
+  const rawFlag = boolFlag(flags, "raw");
+  const noRawFlag = boolFlag(flags, "no-raw");
   if (hunksFlag && noHunksFlag) {
     out.error("review-error: --hunks and --no-hunks are mutually exclusive");
     return 2;
   }
   if (filesFlag && noFilesFlag) {
     out.error("review-error: --files and --no-files are mutually exclusive");
+    return 2;
+  }
+  if (rawFlag && noRawFlag) {
+    out.error("review-error: --raw and --no-raw are mutually exclusive");
     return 2;
   }
   if (hunksFlag && filesFlag) {
@@ -260,6 +302,8 @@ export async function review(argv, { cwd = ".", out = console } = {}) {
     overrides.hunks = false;
   }
   if (noFilesFlag) overrides.files = false;
+  if (rawFlag) overrides.raw = true;
+  if (noRawFlag) overrides.raw = false;
 
   let config;
   try {
@@ -560,6 +604,8 @@ export async function review(argv, { cwd = ".", out = console } = {}) {
   const { evaluate, JevError, JevOverloadedError } = await import("../jev.js");
   const scopeResults = [];
   let changeResult = null;
+  const rawMode = config.raw === true;
+  const rawScopes = [];
   try {
     const hasHunkQuestions = Object.keys(questionsHunk).length > 0;
     // Skip per-scope calls when only change-scoped prefs remain and the
@@ -572,15 +618,23 @@ export async function review(argv, { cwd = ".", out = console } = {}) {
           client,
           timeoutMs,
         });
+        if (rawMode) {
+          rawScopes.push({ ...scope, state: undefined, results: rawSuites(config, answers, scopedMode ? hunkPrefs : config.prefs) });
+          continue;
+        }
         const suiteVerdicts = judgeSuites(config, answers, scopedMode ? hunkPrefs : config.prefs);
         scopeResults.push({ ...scope, state: undefined, suiteVerdicts, outcome: worstOf(suiteVerdicts) });
       }
     }
     if (changeState) {
       const answers = await evaluate({ state: changeState, questions: questionsChange, client, timeoutMs });
-      const judged = prefsSuite.judge(changePrefs, answers, config);
-      const suiteVerdicts = [{ suite: "prefs", ...judged }];
-      changeResult = { label: "change", outcome: judged.outcome, suiteVerdicts };
+      if (rawMode) {
+        rawScopes.push({ label: "change", files: scopes.flatMap((s) => s.files ?? []), results: rawSuites({ ...config, suites: ["prefs"] }, answers, changePrefs) });
+      } else {
+        const judged = prefsSuite.judge(changePrefs, answers, config);
+        const suiteVerdicts = [{ suite: "prefs", ...judged }];
+        changeResult = { label: "change", outcome: judged.outcome, suiteVerdicts };
+      }
     }
   } catch (e) {
     if (e instanceof JevError || e instanceof JevOverloadedError) {
@@ -596,6 +650,24 @@ export async function review(argv, { cwd = ".", out = console } = {}) {
   const allVerdicts = [...scopeResults.flatMap((s) => s.suiteVerdicts), ...(changeResult ? changeResult.suiteVerdicts : [])];
   const overall = worstOf(allVerdicts);
   const advisoryCount = countAdvisories(allVerdicts);
+  if (rawMode) {
+    // Observation only: no verdict, no handoff, exit 0. failOn is ignored.
+    const payload = {
+      mode: "raw",
+      intro: RAW_INTRO,
+      thresholds: { gateThreshold: config.gateThreshold, advisoryThreshold: config.advisoryThreshold },
+      scopes: rawScopes.map((s) => ({
+        label: s.label || "(whole-diff)",
+        file: s.file,
+        start: s.start,
+        count: s.count,
+        results: s.results,
+      })),
+      files: [...new Set(rawScopes.flatMap((s) => s.files ?? []))],
+    };
+    out.log(json ? JSON.stringify(payload) : renderRaw(rawScopes, config));
+    return 0;
+  }
   let text;
   let payload;
   if (scopeResults.length === 1 && !scopeResults[0].label && !changeResult) {

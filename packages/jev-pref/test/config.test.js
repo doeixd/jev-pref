@@ -63,6 +63,11 @@ describe("validateConfig", () => {
     assert.ok(validateConfig(valid({ prefs: [{ ...goodPrefs[0], name: "" }] })).some((e) => e.includes("name must be")));
     assert.ok(validateConfig(valid({ prefs: [{ ...goodPrefs[0], description: "" }] })).some((e) => e.includes("description must be")));
   });
+
+  it("requires raw to be boolean", () => {
+    assert.deepEqual(validateConfig(valid({ raw: true })), []);
+    assert.ok(validateConfig(valid({ raw: "yes" })).some((e) => e.includes("raw must be boolean")));
+  });
 });
 
 describe("extractFencedBlock", () => {

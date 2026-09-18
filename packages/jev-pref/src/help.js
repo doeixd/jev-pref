@@ -97,10 +97,18 @@ Client:
   --max-diff-chars N       per-request diff budget (default 20000). Whole-diff
                            overflow fails; scoped modes split oversized units.
 
+Observation mode (no verdict; for agents that interpret raw numbers):
+  --raw, --no-raw  report per-pref P / label / confidence with each line's
+                    cutoff beside it, plus a short intro saying what the
+                    numbers mean. Applies no verdict, skips the agent handoff,
+                    ignores --fail-on, and always exits 0 on success.
+                    JEV_RAW=1 / config raw:true also enable (flags win).
+
 Output:
   --json            machine-readable verdict on stdout (progress goes to
                     stderr, so stdout stays parseable). Canonical scope key is
                     scopes (with advisoryCount); no duplicated hunks array.
+                    With --raw the payload is {mode: raw, intro, scopes}.
   --dry-run, -n     print questions/state without calling Jev (free). Pref list
                     once, scopes carry pref ids only, plus a token-budget
                     estimate against the 30k limit. Questions display as

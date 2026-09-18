@@ -45,6 +45,13 @@ describe("cli dispatcher", () => {
     assert.match(t.logs.join("\n"), /threshold-independent/);
   });
 
+  it("documents raw observation mode", async () => {
+    const { out, logs } = mockOut();
+    assert.equal(await run(["help", "review"], { out }), 0);
+    assert.match(logs.join("\n"), /--raw/);
+    assert.match(logs.join("\n"), /no verdict/);
+  });
+
   it("prints the sync protocol", async () => {
     const { out, logs } = mockOut();
     assert.equal(await run(["sync"], { cwd: ".", out }), 0);

@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
-import { buildQuestions, displayQuestionType, judge, partitionPrefs, summarizePreference } from "../src/suites/prefs.js";
+import { buildQuestions, displayQuestionType, headline, judge, partitionPrefs, rawResults, summarizePreference } from "../src/suites/prefs.js";
 import { buildQuestions as buildSecrets, judge as judgeSecrets } from "../src/suites/secrets.js";
 
 const prefs = [
@@ -114,6 +114,33 @@ describe("prefs suite", () => {
     }, cfg);
     assert.equal(vc.classifications[0].name, "API change");
     assert.match(vc.failures[0], /API change \(api_change\)=breaking/);
+  });
+
+  it("reports raw records with policy context and no verdict", () => {
+    const recs = rawResults(
+      [
+        { id: "gate_one", name: "Gate one", gate: true, text: "Gate." },
+        {
+          id: "api_change", type: "choice", question: "Classify.",
+          labels: { none: "No change", breaking: "Incompatible" },
+          outcomes: { none: "approve", breaking: "fix_now" },
+        },
+      ],
+      {
+        pref_gate_one: { chance: 0.9 },
+        pref_api_change: { choice: "breaking", confidence: 0.8, probabilities: { breaking: 0.85 } },
+      },
+      cfg,
+    );
+    assert.equal(recs[0].probability, 0.9);
+    assert.equal(recs[0].cutoff, cfg.gateThreshold);
+    assert.equal(recs[0].gate, true);
+    assert.ok(!("outcome" in recs[0]));
+    assert.equal(recs[1].label, "breaking");
+    assert.equal(recs[1].cutoff, cfg.gateThreshold);
+    assert.deepEqual(recs[1].outcomes, { none: "approve", breaking: "fix_now" });
+    assert.equal(headline({ id: "gate_one", name: "Gate one" }), "Gate one (gate_one)");
+    assert.equal(headline({ id: "gate_one" }), "gate_one");
   });
 
   it("falls through to approve when the top choice label scores below cutoff", () => {
