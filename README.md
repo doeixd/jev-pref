@@ -1,6 +1,8 @@
-# jev-pref
+<p align="center">
+  <img src="./explainer/media/jev-pref-explainer.gif" alt="Jev-pref explainer" width="640">
+</p>
 
-![Jev-pref explainer](./explainer/media/jev-pref-explainer.gif)
+# jev-pref
 
 **Turn your preferences from AGENTS.md into a fast, Jev-powered AI linter.**
 
