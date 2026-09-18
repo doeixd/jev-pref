@@ -216,11 +216,14 @@ class JevPrefExplainer(Scene):
             ("+ export interface TransportSurface {", WHITE_90),
             ("+   send(input: Request): Effect<Response>", WHITE_90),
             ("+ }", WHITE_90),
-            (" ", WHITE_70),
             ("  // Surface already models this", WHITE_45),
         ]
-        lines = VGroup(*[self.mono(s, 26, color=c) for s, c in diff_lines])
-        lines.arrange(DOWN, buff=0.18, aligned_edge=LEFT)
+        code = VGroup(*[self.mono(s, 26, color=c) for s, c in diff_lines[:5]])
+        code.arrange(DOWN, buff=0.22, aligned_edge=LEFT)
+        comment = self.mono(diff_lines[5][0], 26, color=diff_lines[5][1])
+        comment.next_to(code, DOWN, buff=0.5)
+        comment.align_to(code, LEFT)
+        lines = VGroup(*code, comment)
         lines.move_to(diff_box.get_center()).align_to(diff_box, LEFT).shift(RIGHT * 0.5)
 
         self.play(Create(diff_box), FadeIn(lines, lag_ratio=0.06), run_time=1.0)
