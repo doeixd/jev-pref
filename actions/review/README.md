@@ -14,7 +14,9 @@ outcome-driven check status. Needs checkout with `fetch-depth: 0`.
 
 > Requires the published `jev-pref` npm package (default `engine-version:
 > latest`). Pre-release, point `engine:` at a local checkout instead:
-> `engine: ./packages/jev-pref/bin/jev-pref.js`.
+> `engine: ./packages/jev-pref/bin/jev-pref.js` — and install its
+> dependencies first (`npm ci` in the engine directory), since a local
+> path runs with whatever `node_modules` is present.
 
 ## Inputs
 
