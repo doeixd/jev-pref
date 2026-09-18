@@ -6,6 +6,26 @@
 code changes with [Jev](https://docs.typesafe.ai), and feed the results back to
 your coding agent.
 
+## Quick start
+
+Tell your coding agent:
+
+```text
+Run `npx jev-pref setup` and follow the instructions it prints.
+```
+
+That's it.
+
+`setup` inspects the repository and teaches the agent how to configure
+`jev-pref`. The agent explains the system, asks you a few questions, helps
+translate your preferences into useful semantic checks, and adds persistent
+instructions to `AGENTS.md`, `CLAUDE.md`, or wherever you choose.
+
+No special agent integration or global installation is required. Node.js 20+
+and `npx` are enough.
+
+## How to think about it
+
 Think:
 
 ```text
@@ -32,24 +52,6 @@ you define what matters:
 Jev evaluates those questions against the change. `jev-pref` applies
 project-defined thresholds and outcomes to produce structured findings. Your
 coding agent can use those findings to improve the implementation.
-
-## Quick start
-
-Tell your coding agent:
-
-```text
-Run `npx jev-pref setup` and follow the instructions it prints.
-```
-
-That's it.
-
-`setup` inspects the repository and teaches the agent how to configure
-`jev-pref`. The agent explains the system, asks you a few questions, helps
-translate your preferences into useful semantic checks, and adds persistent
-instructions to `AGENTS.md`, `CLAUDE.md`, or wherever you choose.
-
-No special agent integration or global installation is required. Node.js 20+
-and `npx` are enough.
 
 ## What it looks like
 
