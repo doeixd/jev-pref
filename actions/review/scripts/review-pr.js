@@ -74,7 +74,9 @@ function commentBody({ outcome, suites, base, head, runUrl }) {
   lines.push(`Reviewed \`${base}\`...${head} · suites: ${suites.map((s) => `${s.suite}=\`${s.outcome}\``).join(", ")}`);
   lines.push("");
   for (const s of suites) {
-    const classifications = (s.classifications ?? []).map((c) => {
+    // Choice classifications carry a label; condition entries have none (their
+    // P only matters when it crosses a threshold into failures/notes below).
+    const classifications = (s.classifications ?? []).filter((c) => c.label).map((c) => {
       const scope = c.scope ? `[${c.scope}] ` : "";
       const confidence = c.confidence === undefined ? "" : ` confidence=${Number(c.confidence).toFixed(2)}`;
       return `${scope}${c.id}=${c.label} P=${Number(c.probability).toFixed(2)}${confidence} → ${c.outcome}`;
