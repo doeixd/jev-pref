@@ -24,7 +24,7 @@ instructions to `AGENTS.md`, `CLAUDE.md`, or wherever you choose.
 No special agent integration or global installation is required. Node.js 20+
 and `npx` are enough.
 
-## How to think about it
+## What jev-pref is for
 
 Think:
 
@@ -35,23 +35,38 @@ tests       → behavioral invariants
 jev-pref    → semantic project rules
 ```
 
-Instead of asking an AI:
+Instead of asking an AI "is this code good?", you define what matters, Jev
+classifies the evidence in the change, `jev-pref` maps the result to an
+outcome, and your coding agent acts on it. The full boundary — what Jev may
+and may not judge — lives in [docs/principles.md](./docs/principles.md).
 
-> Is this code good?
+Good questions name externally defined, evidence-grounded checks:
 
-you define what matters:
+```text
+Does this diff introduce new mutable module-level state?
+```
 
-> Does this change introduce shared mutable state?
+```text
+Does this change remove or rename an existing exported symbol?
+```
 
-> Does this change add a second representation of an existing domain concept?
+```text
+Classify the API impact:
 
-> Does this public API remove or rename an existing export?
+- none
+- additive
+- behavioral
+- breaking
+```
 
-> Classify this API change as none, additive, behavioral, or breaking.
+Poor questions ask Jev to invent a standard of quality:
 
-Jev evaluates those questions against the change. `jev-pref` applies
-project-defined thresholds and outcomes to produce structured findings. Your
-coding agent can use those findings to improve the implementation.
+```text
+Is this good architecture? Is this code clean? Are these tests sufficient?
+```
+
+If you cannot explain what visible evidence would make an answer true, the
+rule needs more shaping before it becomes a check.
 
 ## What it looks like
 
@@ -89,100 +104,6 @@ flowchart TD
 
 Your coding agent is the **fixer**.
 
-## Why?
-
-Coding agents are good at building things. They can also drift from project
-conventions while they work:
-
-- introducing a second abstraction for something that already exists;
-- widening an API beyond the project's defined policy;
-- adding configuration where the project requires an existing composition
-  mechanism;
-- creating shared state where the architecture forbids it;
-- changing a public API in a way the project defines as breaking;
-- crossing project-specific architectural boundaries.
-
-Many of these rules are difficult or impractical to encode in ESLint,
-TypeScript, or ordinary static analysis. They can still be concrete enough to
-evaluate from a code change.
-
-```text
-                  deterministic tooling
-
-formatter ─────── formatting
-TypeScript ────── types
-ESLint ────────── static rules
-tests ─────────── behavior
-
-                       │
-                       ▼
-
-jev-pref ─────── semantic project rules
-
-                       │
-                       ▼
-
-                 coding agent
-                 fixes findings
-```
-
-## The important constraint
-
-Jev is not a general-purpose senior code reviewer. It works best when **you
-define what counts** and the evidence needed to answer is present in the input.
-
-Good questions look like:
-
-```text
-Does this diff introduce new mutable module-level state?
-```
-
-```text
-Does this change remove or rename an existing exported symbol?
-```
-
-```text
-Does this diff introduce another representation of a concept already
-represented by the project's Surface abstraction?
-```
-
-```text
-Classify the API impact:
-
-- none
-- additive
-- behavioral
-- breaking
-```
-
-Poor questions look like:
-
-```text
-Is this good architecture?
-```
-
-```text
-Is this code clean?
-```
-
-```text
-Are these tests sufficient?
-```
-
-```text
-Is this implementation unnecessarily complicated?
-```
-
-Those require the evaluator to invent its own standard of quality. `jev-pref`
-uses a different contract:
-
-```text
-YOU define the rule.
-JEV classifies the evidence.
-JEV-PREF determines the outcome.
-YOUR AGENT acts on the result.
-```
-
 ## Setup
 
 Run:
@@ -207,37 +128,12 @@ project appropriately.
 
 ### The agent translates; Jev evaluates
 
-The coding agent is responsible for translating the project's human guidance
-into Jev-shaped checks. It reads `AGENTS.md`, `CLAUDE.md`, and related
-conventions, asks you to define any missing criteria, and writes the resulting
-questions or fixed classifications to the Jev configuration. It should not
-send vague instructions such as “keep the code clean” to Jev.
-
-Jev is the evaluator, not the policy author or fixer. For each bounded diff it
-classifies the evidence against those configured questions, returning a
-probability for a condition or a label and confidence for a choice. `jev-pref`
-then applies your thresholds and outcome mapping (`approve`, `advisory`, or
-`fix_now`). The agent reads that result, explains it, and decides how to change
-the code.
-
-Because Jev's input limit is 30k tokens including state and questions, the
-agent should review focused changes: use `--hunks` for small file/line scopes,
-`--files` for bounded files, and narrow larger work with `--include` or
-`--exclude`.
-
-```text
-Human + agent
-    ↓
-interpret intent
-shape preferences
-edit project files
-
-jev-pref
-    ↓
-repeatable evaluation
-structured output
-stable exit behavior
-```
+The coding agent turns your `AGENTS.md`/`CLAUDE.md` guidance into Jev-shaped
+checks (asking you to define missing criteria); Jev only classifies evidence
+in bounded diffs. See [docs/principles.md](./docs/principles.md) for the
+contract. Because Jev's input is capped at 30k tokens, review focused changes:
+`--hunks` for file/line scopes, `--files` per file, `--include`/`--exclude`
+to narrow the rest.
 
 ## What setup will ask you
 
@@ -372,13 +268,8 @@ instructions may document the environment variable name, never its value.
 
 ## Writing good semantic checks
 
-A good Jev check has an answer whose meaning is defined outside the model.
-
-A useful test is:
-
-> Could I explain exactly what visible evidence would make this rule true?
-
-If not, the rule needs more shaping.
+The rule of thumb ([principles](./docs/principles.md)): if you cannot explain
+what visible evidence would make an answer true, the rule needs more shaping.
 
 ### Prefer concrete conditions
 
@@ -811,68 +702,12 @@ printed by the authoritative CLI protocol.
 npx skills add doeixd/jev-pref --skill jev-pref
 ```
 
-## Architecture
+## Further reading
 
-```text
-                 HUMAN / PROJECT
-                       │
-                       ▼
-             explicit semantic rules
-                       │
-                       ▼
-                 jev-pref config
-                       │
-                       ▼
-                    git diff
-                       │
-                       ▼
-                ┌────────────┐
-                │    Jev     │
-                │ classifier │
-                └─────┬──────┘
-                      │
-             typed answers + confidence
-                      │
-                      ▼
-             deterministic policy
-                      │
-          ┌───────────┼───────────┐
-          ▼           ▼           ▼
-       approve     advisory    fix_now
-          │           │           │
-          └───────────┼───────────┘
-                      ▼
-                 coding agent
-                      │
-                      ▼
-                  improved code
-```
-
-The evaluator does not own your definition of quality. The project does.
-
-## Philosophy
-
-A useful semantic check should generally be:
-
-- **Externally defined:** the project or user determines what counts.
-- **Evidence-grounded:** the answer follows from information supplied to Jev.
-- **Narrow:** one check represents one meaningful judgment.
-- **Actionable:** a finding gives the coding agent information it can use.
-- **Calibratable:** labeled examples reveal whether the check works.
-- **Complementary:** deterministic tooling does not already enforce it well.
-
-If a check depends mostly on the evaluator's own sense of what is elegant,
-safe, clean, or good, it is not ready to become a Jev check.
-
-## The short version
-
-```text
-Define the rules static tooling can't express.
-
-Let Jev classify whether your changes match them.
-
-Let your coding agent use those findings to improve the project.
-```
+- [docs/principles.md](./docs/principles.md) — the boundary, the contract,
+  and the architecture behind the tool.
+- [Writing good semantic checks](#writing-good-semantic-checks) — shaping
+  guidance into concrete conditions and fixed classifications.
 
 ```bash
 npx jev-pref setup
