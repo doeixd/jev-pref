@@ -112,38 +112,29 @@ Run:
 npx jev-pref setup
 ```
 
-`setup` is intentionally agent-facing. It does not run a rigid CLI questionnaire
-or make subjective configuration decisions itself. Instead, it:
+`setup` is intentionally agent-facing. It inspects your project, finds
+existing guidance, and helps your coding agent turn suitable preferences into
+concrete Jev checks — asking whether each result is blocking or advisory,
+choosing shared vs local configuration, and installing your preferred
+agent/CI integration. Credentials stay environment-only; the agent records
+the variable name, never its value.
 
-1. inspects the repository;
-2. finds existing `AGENTS.md`, `CLAUDE.md`, conventions, and config;
-3. explains `jev-pref` to the coding agent;
-4. tells the agent what questions to ask you;
-5. teaches the agent how to write evidence-grounded checks;
-6. explains available integration options;
-7. provides configuration examples and verification steps.
+The artifacts it produces:
 
-The coding agent then talks to you, understands your answers, and edits the
-project appropriately.
+```text
+AGENTS.md           # review + sync contract for your agent
+jev-pref.json       # shared checks (committed)
+.gitignore          # only if using gitignored jev-pref.local.json
+```
 
-### The agent translates; Jev evaluates
+## Writing good semantic checks
 
-The coding agent turns your `AGENTS.md`/`CLAUDE.md` guidance into Jev-shaped
-checks (asking you to define missing criteria); Jev only classifies evidence
-in bounded diffs. See [docs/principles.md](./docs/principles.md) for the
-contract. Because Jev's input is capped at 30k tokens, review focused changes:
-`--hunks` for file/line scopes, `--files` per file, `--include`/`--exclude`
-to narrow the rest.
+The rule of thumb ([principles](./docs/principles.md)): if you cannot explain
+what visible evidence would make an answer true, the rule needs more shaping.
 
-## What setup will ask you
+### Which guidance becomes a check
 
-The exact conversation depends on the repository, but the agent establishes
-five things.
-
-### 1. What should be checked?
-
-The agent inspects existing project guidance and identifies candidate semantic
-rules. It then classifies each candidate:
+Classify each candidate before encoding it:
 
 ```text
 DIRECT
@@ -157,119 +148,11 @@ The rule is procedural, needs unavailable evidence, asks for subjective
 quality judgment, or deterministic tooling can enforce it better.
 ```
 
-Only DIRECT candidates should become Jev checks. Fewer well-defined checks are
-better than broad subjective coverage.
-
-For example, this guidance is useful but too broad by itself:
-
-```text
-"Public primitives should compose with existing primitives rather than
-introduce parallel systems."
-```
-
-The agent can help turn it into one or more concrete questions, such as:
-
-```text
-Does this change introduce a new public abstraction representing a concept
-already represented by the project's Surface primitive?
-```
-
-### 2. Is each result blocking or advisory?
-
-A **gate** means the project generally should not continue when a defined
-condition is detected. Gates suit architectural invariants, prohibited
-patterns, breaking API changes, security-sensitive policies, and rules that are
-substantially harder to repair later.
-
-An **advisory** surfaces a defined condition without automatically blocking
-progress. When policy severity is uncertain, start advisory and tighten it
-after observing labeled examples.
-
-Fixed classifications can map each label separately:
-
-```text
-none        → approve
-additive    → approve
-behavioral  → advisory
-breaking    → fix_now
-```
-
-### 3. Are the preferences shared or personal?
-
-Shared project rules belong in committed configuration:
-
-```text
-jev-pref.json
-```
-
-Personal or experimental rules belong in:
-
-```text
-jev-pref.local.json
-```
-
-The local file should normally be gitignored. It merges over shared policy by
-preference id: matching ids override shared checks and new ids append. Other
-local settings override their shared equivalents.
-
-The agent asks before changing `.gitignore` or deciding policy ownership.
-
-### 4. When should review run?
-
-There are several integration styles.
-
-#### Agent loop — recommended
-
-Tell the coding agent to run `jev-pref` after a meaningful bout of work, while
-the diff is still focused.
-
-```text
-implement
-   ↓
-jev-pref review --hunks
-   ↓
-fix findings
-   ↓
-continue
-```
-
-#### GitHub Actions
-
-Run the same checks on pull requests for shared policy and merge enforcement.
-
-#### Git hooks
-
-Run file-scoped checks on staged changes before committing.
-
-#### Custom scripts
-
-Consume JSON and exit codes from Node, Python, shell scripts, CI systems,
-editors, or custom agent infrastructure:
-
-```bash
-npx jev-pref review --json
-```
-
-### 5. How should Jev authenticate?
-
-Credentials are environment-only. Supported sources include:
-
-```text
-JEV_API_KEY
-TYPESAFE_API_KEY
-AI_GATEWAY_API_KEY
-VERCEL_OIDC_TOKEN
-```
-
-The setup agent inspects which authentication paths appear available and asks
-which one the project should rely on. Keys must never be written to config,
-agent instructions, scripts, or committed environment files. Persistent
-instructions may document the environment variable name, never its value.
-
-## Writing good semantic checks
-
-The rule of thumb ([principles](./docs/principles.md)): if you cannot explain
-what visible evidence would make an answer true, the rule needs more shaping.
+Only DIRECT candidates become Jev checks. For example, "public primitives
+should compose with existing primitives rather than introduce parallel
+systems" is too broad alone; shaped, it becomes "does this change introduce
+a new public abstraction representing a concept already represented by the
+project's Surface primitive?".
 
 ### Prefer concrete conditions
 
@@ -324,23 +207,9 @@ Policy:   behavioral → advisory
 Result:   advisory
 ```
 
-Write Bernoulli questions, not true/false ones. A condition asks Jev to
-estimate p(true) from visible evidence (Jev native type `noul`, answered
-`{chance: P}`); the threshold is the decision boundary on p. Name the visible
-fact that moves p in `guidance` ("count only ...") rather than restating truth
-conditions.
-
-Classification confidence and policy severity stay separate. Thresholds gate
-on probability (P) only; confidence is displayed (for example
-`P=0.86 confidence=0.73`) but never gates, suppresses, or applies an outcome.
-An important gate does not block unless its probability crosses the configured
-gate threshold; a high-confidence advisory remains non-blocking.
-`gateThreshold` governs gate conditions, secrets, AND `fix_now`-mapped choice
-labels; `advisoryThreshold` governs advisory conditions and advisory-mapped
-labels (a `fix_now` label between the two reports an uncertain-gate note). A
-choice whose top label scores below its outcome's cutoff falls through to
-approve for that scope — no failure, no note, no fallback to the next label —
-while the classification line is still printed.
+A condition is a Bernoulli question — Jev estimates p(true) and the
+threshold decides; see [docs/evaluation-model.md](./docs/evaluation-model.md)
+for confidence, cutoffs, and below-cutoff fallthrough.
 
 ### Don't replace deterministic tooling
 
@@ -429,29 +298,9 @@ Use per-file review for broader changes and pull requests:
 npx jev-pref review --files
 ```
 
-Jev accepts at most 30k input tokens, including the review state and questions.
-`jev-pref` uses a conservative per-request diff budget, splits bounded file or
-hunk scopes when necessary, and fails loudly rather than approving truncated or
-incomplete input. Review changes while they are still small, or narrow them
-with `--include` and `--exclude`.
-
-#### What Jev sees per call (the evidence envelope)
-
-Each Jev call receives exactly the serialized `{state, questions}` pair that
-`--dry-run` prints — nothing else. `state` carries the call's pref subset,
-the `diff` body (one hunk/file, or the whole diff for change-scoped and
-whole-diff calls), `hunk {file, label, header}` (`--hunks`), `changed_file`
-(`--files`), or `new_file` (untracked), plus `untracked_files`, `git_status`,
-`diff_stat`, `context`, and a completeness note. Filenames ARE visible via
-diff/hunk headers and the file/label fields; the rest of the repo is NOT.
-Write guidance against that envelope.
-
-#### Cost model
-
-Calls are sequential: one Jev call per hunk/file scope, plus one whole-diff
-call when any pref is `change`-scoped. 10 hunks ~= 10 calls. Prefer `--files`
-for broad reviews (one call per file) and narrow with `--include`/`--exclude`
-before raising `--max-hunks`.
+Jev input is capped (30k tokens) and each call sees only its own scope;
+details live in [docs/review-scopes.md](./docs/review-scopes.md). Review small
+changes, or narrow with `--include`/`--exclude`.
 
 Preview the planned questions and state without a live call:
 
@@ -706,6 +555,10 @@ npx skills add doeixd/jev-pref --skill jev-pref
 
 - [docs/principles.md](./docs/principles.md) — the boundary, the contract,
   and the architecture behind the tool.
+- [docs/evaluation-model.md](./docs/evaluation-model.md) — Bernoulli
+  questions, confidence, thresholds, and fallthrough.
+- [docs/review-scopes.md](./docs/review-scopes.md) — the evidence envelope,
+  budgets, and call costs.
 - [Writing good semantic checks](#writing-good-semantic-checks) — shaping
   guidance into concrete conditions and fixed classifications.
 
