@@ -230,7 +230,7 @@ class JevPrefExplainer(Scene):
         lens.move_to(lines[2:5].get_center())
         lens.align_to(lines[2], LEFT).shift(RIGHT * 2.4)
         label = self.t("visible evidence", 22, color=WHITE_90, weight=BOLD)
-        label.next_to(lens, DOWN, buff=0.25)
+        label.next_to(lens, DOWN, buff=0.3)
         self.play(Create(lens), FadeIn(label))
         self.wait(1.2)
         self.wipe(section, cmd, diff_box, lines, lens, label)
