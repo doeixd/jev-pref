@@ -1,6 +1,6 @@
 # jev-pref
 
-**Turn your AGENTS.md preferences into a fast, Jev-powered AI linter.**
+**Turn your preferences from AGENTS.md into a fast, Jev-powered AI linter.**
 
 `jev-pref` lets you define project-specific semantic rules, run them against
 code changes with [Jev](https://docs.typesafe.ai), and feed the results back to
@@ -85,19 +85,6 @@ sequenceDiagram
     Agent->>Agent: Inspect, then refactor
     Agent->>Jev: review --hunks
     Jev-->>Agent: approve
-```
-
-What the agent does with each verdict:
-
-```mermaid
-flowchart TD
-    R[review --hunks] --> V{verdict?}
-    V -->|fix_now| F[address the finding]
-    F --> R
-    V -->|advisory| C[consider in context]
-    C --> R
-    V -->|approve| D[continue]
-    R -->|after 3 loops| U[ask the user]
 ```
 
 `jev-pref` is the **linter**.
