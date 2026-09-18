@@ -64,7 +64,7 @@ For every Jev preference, ask:
 
 1. Is the correct answer externally defined by the user or project?
 2. Is the required evidence available in the review input?
-3. Is it a Bernoulli question (visible evidence moving p(true), decided by a threshold) or a fixed user-defined taxonomy?
+3. Is it a Bernoulli question (visible evidence moving p(true), decided by a threshold) or a fixed user-defined taxonomy? Do its label descriptions state the observable criteria telling each label apart?
 4. Would two reviewers applying the written definition usually agree?
 5. Would deterministic tooling enforce it better?
 

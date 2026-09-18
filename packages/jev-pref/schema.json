@@ -244,7 +244,8 @@
               },
               "guidance": {
                 "type": "string",
-                "minLength": 1
+                "minLength": 1,
+                "description": "Cross-label tie-breakers and inclusions/exclusions Jev cannot infer from the label descriptions alone."
               },
               "labels": {
                 "type": "object",
@@ -253,7 +254,8 @@
                 "additionalProperties": {
                   "type": "string",
                   "minLength": 1
-                }
+                },
+                "description": "Fixed taxonomy Jev classifies into (sent as criteria). Each description must state the observable criteria distinguishing that label from its neighbors; non-obvious boundaries need the deciding visible fact spelled out, or probability scatters across labels and falls below cutoff."
               },
               "outcomes": {
                 "type": "object",

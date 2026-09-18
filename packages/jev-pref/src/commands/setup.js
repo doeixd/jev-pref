@@ -392,6 +392,15 @@ with its P). Confidence is displayed but never suppresses or applies an
 outcome. Do not ask
 Jev whether the API change is "bad."
 
+Each label description must state the observable criteria that distinguish
+it from its neighbors — Jev sees only these strings plus \`guidance\`, never
+your intent. For non-obvious boundaries (behavioral vs breaking, minor vs
+major), spell out the deciding visible fact in each adjacent description
+("callable with identical arguments but different return values" vs "an
+existing export is removed, renamed, or requires incompatible usage") and
+put cross-label tie-breakers in \`guidance\`. A label Jev cannot tell apart
+from its neighbor will scatter probability across both and fall below cutoff.
+
 POLICY OUTCOMES
 
 Use a gate when the code should not land in that state, later repair would be

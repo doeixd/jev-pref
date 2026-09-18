@@ -209,7 +209,10 @@ Result:   advisory
 
 A condition is a Bernoulli question — Jev estimates p(true) and the
 threshold decides; see [docs/evaluation-model.md](./docs/evaluation-model.md)
-for confidence, cutoffs, and below-cutoff fallthrough.
+for confidence, cutoffs, and below-cutoff fallthrough. Each label description
+must carry the observable criteria that set it apart from its neighbors (Jev
+sees only those strings plus `guidance`); spell out non-obvious boundaries or
+probability scatters and the top label falls below cutoff.
 
 ### Don't replace deterministic tooling
 
