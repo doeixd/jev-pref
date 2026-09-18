@@ -7,12 +7,16 @@
   "prefs": [
     {
       "id": "no_real_keys",
+      "name": "No real keys",
+      "description": "Flags concrete API keys or tokens added to docs, comments, or examples.",
       "gate": false,
       "question": "Does this change add a real API key or token to documentation, comments, or examples?",
       "guidance": "Count concrete credential values. Do not count environment-variable names, redacted values, or obvious placeholders."
     },
     {
       "id": "skill_layout",
+      "name": "Skill layout",
+      "description": "Skills live under skills/<name>/ with name and description frontmatter.",
       "gate": false,
       "question": "Does this change add a skill outside skills/<name>/ or add a skill whose SKILL.md lacks name and description frontmatter?",
       "guidance": "Only evaluate newly added or relocated skills visible in the change."

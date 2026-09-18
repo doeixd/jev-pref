@@ -181,6 +181,16 @@
                 "type": "string",
                 "minLength": 1,
                 "description": "Legacy condition wording; prefer question."
+              },
+              "name": {
+                "type": "string",
+                "minLength": 1,
+                "description": "Short human-readable title shown in reviews and PR comments; falls back to id."
+              },
+              "description": {
+                "type": "string",
+                "minLength": 1,
+                "description": "One-line plain-language summary of what the pref checks; shown in dry-run and doctor."
               }
             },
             "anyOf": [
@@ -250,6 +260,16 @@
                     "fix_now"
                   ]
                 }
+              },
+              "name": {
+                "type": "string",
+                "minLength": 1,
+                "description": "Short human-readable title shown in reviews and PR comments; falls back to id."
+              },
+              "description": {
+                "type": "string",
+                "minLength": 1,
+                "description": "One-line plain-language summary of what the pref checks; shown in dry-run and doctor."
               }
             },
             "description": "Fixed-label classification: Jev selects one label (answered {choice, probabilities, confidence}). Each label's mapped outcome applies only when that label's P crosses its outcome cutoff (fix_now labels: gateThreshold; advisory labels: advisoryThreshold); a below-cutoff top label falls through to approve for that scope. Confidence is shown but never gates."

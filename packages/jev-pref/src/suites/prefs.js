@@ -12,6 +12,16 @@ export function prefScope(pref) {
   return pref.scope ?? "hunk";
 }
 
+/** Human-readable title for reviews and comments; falls back to the id. */
+export function displayName(pref) {
+  return typeof pref?.name === "string" && pref.name.length > 0 ? pref.name : pref?.id;
+}
+
+/** Finding headline: "Name (id)" when named, otherwise the bare id. */
+export function headline(pref) {
+  return typeof pref?.name === "string" && pref.name.length > 0 ? `${pref.name} (${pref.id})` : pref?.id;
+}
+
 export function partitionPrefs(prefs) {
   const hunkPrefs = [];
   const changePrefs = [];
@@ -32,6 +42,8 @@ function question(pref) {
 
 export function summarizePreference(pref) {
   const base = { id: pref.id, kind: kind(pref), scope: prefScope(pref), question: question(pref) };
+  if (typeof pref.name === "string" && pref.name.length > 0) base.name = pref.name;
+  if (typeof pref.description === "string" && pref.description.length > 0) base.description = pref.description;
   if (kind(pref) === "choice") {
     base.labels = Object.keys(pref.labels ?? {});
     base.outcomes = pref.outcomes;
@@ -96,12 +108,13 @@ export function judge(prefs, answers, { gateThreshold, advisoryThreshold }) {
       const configuredOutcome = pref.outcomes[label];
       classifications.push({
         id: pref.id,
+        ...(typeof pref.name === "string" && pref.name.length > 0 ? { name: pref.name } : {}),
         label,
         probability,
         confidence: typeof answer.confidence === "number" ? answer.confidence : undefined,
         outcome: configuredOutcome,
       });
-      const detail = `${pref.id}=${label} P=${probability.toFixed(2)} (${pref.question})`;
+      const detail = `${headline(pref)}=${label} P=${probability.toFixed(2)} (${pref.question})`;
       if (configuredOutcome === "fix_now" && probability >= gateThreshold) failures.push(detail);
       else if (configuredOutcome === "fix_now" && probability >= advisoryThreshold) notes.push(`uncertain gate: ${detail}`);
       else if (configuredOutcome === "advisory" && probability >= advisoryThreshold) notes.push(detail);
@@ -110,7 +123,7 @@ export function judge(prefs, answers, { gateThreshold, advisoryThreshold }) {
 
     classifications.push({ id: pref.id, probability, outcome: pref.gate ? "fix_now" : "advisory" });
     if (probability >= (pref.gate ? gateThreshold : advisoryThreshold)) {
-      const detail = `${pref.id} P=${probability.toFixed(2)} ${question(pref)}`;
+      const detail = `${headline(pref)} P=${probability.toFixed(2)} ${question(pref)}`;
       (pref.gate ? failures : notes).push(detail);
     }
   }

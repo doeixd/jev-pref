@@ -90,6 +90,23 @@ describe("action driver units", () => {
     assert.match(body, /\[src\/api\.ts\] api_change=additive P=0\.91 confidence=0\.82 → approve/);
   });
 
+  it("renders human names in Action comments", () => {
+    const v = normalizeVerdict({
+      outcome: "advisory",
+      scopes: [{
+        label: "src/api.ts",
+        outcome: "advisory",
+        suites: [{
+          suite: "prefs", outcome: "advisory", failures: [], notes: [],
+          classifications: [{ id: "api_change", name: "API change", label: "behavioral", probability: 0.8, outcome: "advisory" }],
+        }],
+      }],
+      files: ["src/api.ts"],
+    });
+    const body = commentBody({ outcome: v.outcome, suites: v.suites, base: "abc", head: "def", runUrl: "" });
+    assert.match(body, /API change \(api_change\)=behavioral/);
+  });
+
   it("omits unlabeled condition classifications from Action comments", () => {
     const v = normalizeVerdict({
       outcome: "approve",

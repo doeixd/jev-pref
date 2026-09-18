@@ -99,7 +99,9 @@ export function countAdvisories(suiteVerdicts) {
       // would report advisories that never fired.
       if (!c.label || c.outcome !== "advisory") continue;
       if ((v.outcome ?? "approve") !== "approve") continue;
-      if ((v.notes ?? []).some((note) => String(note).includes(`${c.id}=${c.label}`))) continue;
+      // Notes headline named prefs as "Name (id)=label"; match loosely so a
+      // reported classification is never double-counted.
+      if ((v.notes ?? []).some((note) => String(note).includes(c.id) && String(note).includes(`=${c.label}`))) continue;
       n += 1;
     }
   }
@@ -124,7 +126,8 @@ export function renderVerdict(suiteVerdicts, scope = "") {
     for (const c of v.classifications ?? []) {
       if (!c.label) continue;
       const confidence = c.confidence === undefined ? "" : ` confidence=${c.confidence.toFixed(2)}`;
-      lines.push(`- ${tag}[${v.suite}] ${c.id}=${c.label} P=${c.probability.toFixed(2)}${confidence} -> ${c.outcome}`);
+      const who = typeof c.name === "string" && c.name.length > 0 ? `${c.name} (${c.id})` : c.id;
+      lines.push(`- ${tag}[${v.suite}] ${who}=${c.label} P=${c.probability.toFixed(2)}${confidence} -> ${c.outcome}`);
     }
     for (const f of [...v.failures, ...v.notes]) lines.push(`- ${tag}[${v.suite}] ${f}`);
   }

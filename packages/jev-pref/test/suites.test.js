@@ -100,6 +100,22 @@ describe("prefs suite", () => {
     assert.equal(q.pref_c_one.type, "noul");
   });
 
+  it("headlines findings with human names while keeping ids", () => {
+    const named = [{ id: "no_any", name: "No any", gate: true, text: "No any." }];
+    const v = judge(named, { pref_no_any: { chance: 0.9 } }, cfg);
+    assert.match(v.failures[0], /No any \(no_any\) P=0\.90/);
+    const choices = [{
+      id: "api_change", name: "API change", type: "choice", question: "Classify.",
+      labels: { none: "No change", breaking: "Incompatible" },
+      outcomes: { none: "approve", breaking: "fix_now" },
+    }];
+    const vc = judge(choices, {
+      pref_api_change: { choice: "breaking", confidence: 0.8, probabilities: { breaking: 0.85 } },
+    }, cfg);
+    assert.equal(vc.classifications[0].name, "API change");
+    assert.match(vc.failures[0], /API change \(api_change\)=breaking/);
+  });
+
   it("falls through to approve when the top choice label scores below cutoff", () => {
     const choices = [{
       id: "api_change",

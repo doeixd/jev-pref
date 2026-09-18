@@ -423,6 +423,8 @@ local fields override project fields. A minimal shared config is:
     "prefs": [
       {
         "id": "no_swallowed_errors",
+        "name": "No swallowed errors",
+        "description": "Caught errors must be returned, logged, transformed, or explicitly ignored.",
         "scope": "hunk",
         "gate": false,
         "question": "Does this change catch an error and continue without returning, logging, transforming, or explicitly ignoring it?",
@@ -448,7 +450,10 @@ local fields override project fields. A minimal shared config is:
     ]
   }
 
-Use snake_case preference and label ids. Condition checks use gate:true only
+Use snake_case preference and label ids, plus a short human name and a
+one-line description per pref so reviews and PR comments read clearly
+("No swallowed errors (no_swallowed_errors)"); ids stay in every line for
+searchability. Condition checks use gate:true only
 when a sufficiently probable true answer should block. Choice checks map every
 label to an outcome. Classification probability (P) controls whether the configured
 outcome applies; confidence is shown but never gates; policy severity still comes

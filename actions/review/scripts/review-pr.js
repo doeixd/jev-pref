@@ -79,7 +79,8 @@ function commentBody({ outcome, suites, base, head, runUrl }) {
     const classifications = (s.classifications ?? []).filter((c) => c.label).map((c) => {
       const scope = c.scope ? `[${c.scope}] ` : "";
       const confidence = c.confidence === undefined ? "" : ` confidence=${Number(c.confidence).toFixed(2)}`;
-      return `${scope}${c.id}=${c.label} P=${Number(c.probability).toFixed(2)}${confidence} → ${c.outcome}`;
+      const who = typeof c.name === "string" && c.name.length > 0 ? `${c.name} (${c.id})` : c.id;
+      return `${scope}${who}=${c.label} P=${Number(c.probability).toFixed(2)}${confidence} → ${c.outcome}`;
     });
     const items = [...classifications, ...s.failures, ...s.notes];
     lines.push(`<details><summary><b>${s.suite}</b> — ${s.outcome}</summary>`, "");

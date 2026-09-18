@@ -322,6 +322,11 @@ export function validateConfig(config) {
       if (p?.guidance !== undefined && (typeof p.guidance !== "string" || p.guidance.length === 0)) {
         errors.push(`prefs[${i}].guidance must be a non-empty string`);
       }
+      for (const k of ["name", "description"]) {
+        if (p?.[k] !== undefined && (typeof p[k] !== "string" || p[k].length === 0)) {
+          errors.push(`prefs[${i}].${k} must be a non-empty string`);
+        }
+      }
       if (type === "condition") {
         if (typeof p.gate !== "boolean") errors.push(`prefs[${i}].gate must be boolean`);
         const hasQuestion = typeof p.question === "string" && p.question.length > 0;

@@ -57,6 +57,12 @@ describe("validateConfig", () => {
     assert.deepEqual(validateConfig(valid({ prefs: [{ ...goodPrefs[0], scope: "change" }] })), []);
     assert.ok(validateConfig(valid({ prefs: [{ ...goodPrefs[0], scope: "whole" }] })).some((e) => e.includes("scope must be hunk|change")));
   });
+
+  it("validates optional human name and description", () => {
+    assert.deepEqual(validateConfig(valid({ prefs: [{ ...goodPrefs[0], name: "No any", description: "No explicit any." }] })), []);
+    assert.ok(validateConfig(valid({ prefs: [{ ...goodPrefs[0], name: "" }] })).some((e) => e.includes("name must be")));
+    assert.ok(validateConfig(valid({ prefs: [{ ...goodPrefs[0], description: "" }] })).some((e) => e.includes("description must be")));
+  });
 });
 
 describe("extractFencedBlock", () => {

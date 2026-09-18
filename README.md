@@ -642,6 +642,8 @@ A shared project config might contain a condition and a fixed classification:
   "prefs": [
     {
       "id": "shared_mutable_state",
+      "name": "No shared mutable state",
+      "description": "No new mutable state shared across module or application boundaries.",
       "scope": "hunk",
       "gate": true,
       "question": "Does this change introduce new mutable state shared across module or application boundaries?",
@@ -670,6 +672,11 @@ A shared project config might contain a condition and a fixed classification:
 
 Legacy `{ "gate", "text" }` conditions remain accepted, but `question` with
 optional `guidance` is the preferred form.
+
+Give each pref a short human `name` and one-line `description` so verdicts
+and PR comments read clearly (`No shared mutable state
+(shared_mutable_state) P=0.91`); the `id` is always kept alongside for
+searchability. Both are optional and fall back to the id.
 
 Prefs accept `scope: "hunk"` (default, evaluated per hunk/file scope) or
 `scope: "change"` (evaluated once against the whole diff). Use `change` for
