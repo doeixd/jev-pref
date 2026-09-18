@@ -3,3 +3,5 @@ node_modules/
 jev-pref.local.json
 .DS_Store
 Thumbs.db
+explainer/.venv/
+explainer/media/
