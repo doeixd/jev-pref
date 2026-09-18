@@ -90,6 +90,24 @@ describe("action driver units", () => {
     assert.match(body, /\[src\/api\.ts\] api_change=additive P=0\.91 confidence=0\.82 → approve/);
   });
 
+  it("omits unlabeled condition classifications from Action comments", () => {
+    const v = normalizeVerdict({
+      outcome: "approve",
+      scopes: [{
+        label: "src/a.ts",
+        outcome: "approve",
+        suites: [{
+          suite: "prefs", outcome: "approve", failures: [], notes: [],
+          classifications: [{ id: "no_keys", probability: 0.02, outcome: "advisory" }],
+        }],
+      }],
+      files: ["src/a.ts"],
+    });
+    const body = commentBody({ outcome: v.outcome, suites: v.suites, base: "abc", head: "def", runUrl: "" });
+    assert.doesNotMatch(body, /undefined/);
+    assert.match(body, /_clean_/);
+  });
+
   it("commentBody truncates to GitHub limits", () => {
     const big = Array.from({ length: 5000 }, (_, i) => `failure number ${i} with padding xxxxxxxxxx`);
     const body = commentBody({
