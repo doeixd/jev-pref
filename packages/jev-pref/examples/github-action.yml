@@ -1,12 +1,15 @@
+# jev-pref pull-request review. Copy this file; do not hand-roll CLI YAML:
+# the CLI only exits non-zero, while this Action also posts one sticky PR
+# comment (updated in place), per-file annotations, and check status.
 name: jev-pref
 
 on:
   pull_request:
 
 permissions:
-  contents: read
-  pull-requests: write
-  issues: write
+  contents: read # diff the PR
+  pull-requests: write # sticky comment
+  issues: write # sticky comment
 
 jobs:
   review:
@@ -14,8 +17,12 @@ jobs:
     steps:
       - uses: actions/checkout@v4
         with:
-          fetch-depth: 0
+          fetch-depth: 0 # full history: the Action diffs base...head
       - uses: doeixd/jev-pref/actions/review@master
         with:
+          # Add TYPESAFE_API_KEY under repo Settings > Secrets and variables >
+          # Actions. Cost is ~one Jev call per changed file (file mode).
           api-key: ${{ secrets.TYPESAFE_API_KEY }}
+          # gates: fix_now fails the check (red, not a work item — nobody
+          # reruns anything in CI); all: advisories fail too.
           fail-on: gates

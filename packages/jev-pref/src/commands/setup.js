@@ -407,7 +407,10 @@ INTEGRATION MODES
 
   Agent loop   Recommended. Run after a meaningful bout of work, fix blocking
                findings, and review again (maximum 3 iterations). Use --hunks.
-  Git/CI       Run --staged --files in a hook or use file-mode GitHub review.
+  Git/CI       Run --staged --files in a hook, or use the review Action for
+               pull requests (same evaluator plus a sticky PR comment,
+               per-file annotations, and check status; run
+               \`npx jev-pref examples github-action\` and copy it).
   Programmatic Run review --json as a subprocess and branch on JSON + exit code.
 
 CONFIGURATION AND OWNERSHIP

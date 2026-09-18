@@ -115,6 +115,18 @@ Output:
                     condition/choice; condition is Jev's native noul type
                     (Bernoulli p(true) -> {chance: P}).
 
+GitHub Actions (for PRs, do NOT hand-roll CLI YAML):
+  The CLI only exits non-zero with logs; it never posts comments. For
+                    pull requests use the review Action instead: it runs the
+                    same evaluator, posts one sticky PR comment (updated in
+                    place), adds per-file annotations, and maps the verdict
+                    to check status. Cost is ~one Jev call per changed file.
+                    Wire the key as api-key: \${{ secrets.TYPESAFE_API_KEY }}
+                    (add TYPESAFE_API_KEY under repo Settings > Secrets).
+                    In CI a fix_now is a red check, not a work item — the
+                    agent-loop fix/rerun pattern does not apply.
+                    Run: jev-pref examples github-action (copy, don't invent).
+
 Exit codes: 0 approve/ok, 1 gate violated, 2 config/infra/usage error.
 Jev accepts at most 30k input tokens. Prefer small changes, --hunks, --files,
 or --include/--exclude. Partial/truncated diffs are never treated as approval.
