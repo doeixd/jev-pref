@@ -646,7 +646,7 @@ A shared project config might contain a condition and a fixed classification:
 
 ```json
 {
-  "$schema": "https://raw.githubusercontent.com/doeixd/jev-pref/v0.3.0/packages/jev-pref/schema.json",
+  "$schema": "https://raw.githubusercontent.com/doeixd/jev-pref/v0.4.0/packages/jev-pref/schema.json",
   "suites": ["prefs"],
   "gateThreshold": 0.8,
   "advisoryThreshold": 0.7,
