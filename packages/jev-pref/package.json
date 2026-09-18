@@ -1,6 +1,6 @@
 {
   "name": "jev-pref",
-  "version": "0.4.0",
+  "version": "0.4.1",
   "description": "AI linter for project-defined semantic checks on code changes",
   "type": "module",
   "bin": {

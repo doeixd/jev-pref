@@ -429,7 +429,7 @@ merge by id: same-id entries override shared rules and new ids append. Other
 local fields override project fields. A minimal shared config is:
 
   {
-    "$schema": "https://raw.githubusercontent.com/doeixd/jev-pref/v0.4.0/packages/jev-pref/schema.json",
+    "$schema": "https://raw.githubusercontent.com/doeixd/jev-pref/v0.4.1/packages/jev-pref/schema.json",
     "suites": ["prefs", "secrets"],
     "gateThreshold": 0.7,
     "advisoryThreshold": 0.7,
@@ -473,7 +473,7 @@ label to an outcome. Classification probability (P) controls whether the configu
 outcome applies; confidence is shown but never gates; policy severity still comes
 from gate or outcomes. Use scope:"change" for whole-diff predicates (file adds,
 renames, cross-hunk counts); default scope is "hunk" (per hunk/file). Pin $schema
-to a tagged release (e.g. .../v0.4.0/.../schema.json), not master, so old configs
+to a tagged release (e.g. .../v0.4.1/.../schema.json), not master, so old configs
 validate against what they were written for. For personal
 additions, use the same shape in jev-pref.local.json and add that path to
 .gitignore. Never place personal policy in the shared file without agreement.
