@@ -123,6 +123,18 @@ readable guidance, and jev-pref's executable semantic policy. This command is
 read-only. You, the coding agent, will interview the user and make the requested
 repository changes.
 
+YOUR ROLE AS THE CODING AGENT
+
+You are the translator. Read the user's AGENTS.md, CLAUDE.md, and project
+guidance, then turn only the relevant preferences into narrow Jev-shaped
+questions or fixed classifications. Do not ask Jev to translate vague prose
+or invent a standard of quality. Ask the user when the observable criteria are
+missing or ambiguous. Jev is the evaluator: it receives the bounded review
+input and your configured questions, returns probabilities or a chosen label,
+and does not edit files or decide the project's policy. jev-pref applies the
+configured thresholds and outcome mapping; you use the finding to explain or
+fix the code.
+
 THE LIVING CONTRACT
 
   PROJECT GUIDANCE       What do we believe?

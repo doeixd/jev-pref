@@ -15,6 +15,13 @@ credential availability, ignore rules, and wiring. It teaches the agent how to
 interview the user, author evidence-grounded checks, install a persistent
 review-and-synchronization contract, and validate the result.
 
+The coding agent is the translator: it turns `AGENTS.md`, `CLAUDE.md`, and
+project conventions into narrow Jev questions or fixed classifications. Jev
+only evaluates the bounded diff against those definitions. It returns
+probabilities or labels; `jev-pref` applies thresholds and outcomes; the agent
+explains or fixes the findings. Review focused changes with `--hunks` or
+`--files` because Jev accepts at most 30k input tokens including context.
+
 No global install is needed. Node.js 20+ is required.
 
 ## Commands

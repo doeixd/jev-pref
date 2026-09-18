@@ -225,6 +225,26 @@ or make subjective configuration decisions itself. Instead, it:
 The coding agent then talks to you, understands your answers, and edits the
 project appropriately.
 
+### The agent translates; Jev evaluates
+
+The coding agent is responsible for translating the project's human guidance
+into Jev-shaped checks. It reads `AGENTS.md`, `CLAUDE.md`, and related
+conventions, asks you to define any missing criteria, and writes the resulting
+questions or fixed classifications to the Jev configuration. It should not
+send vague instructions such as “keep the code clean” to Jev.
+
+Jev is the evaluator, not the policy author or fixer. For each bounded diff it
+classifies the evidence against those configured questions, returning a
+probability for a condition or a label and confidence for a choice. `jev-pref`
+then applies your thresholds and outcome mapping (`approve`, `advisory`, or
+`fix_now`). The agent reads that result, explains it, and decides how to change
+the code.
+
+Because Jev's input limit is 30k tokens including state and questions, the
+agent should review focused changes: use `--hunks` for small file/line scopes,
+`--files` for bounded files, and narrow larger work with `--include` or
+`--exclude`.
+
 ```text
 Human + agent
     ↓
