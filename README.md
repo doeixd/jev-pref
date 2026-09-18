@@ -55,54 +55,34 @@ coding agent can use those findings to improve the implementation.
 
 ## What it looks like
 
-A normal agent workflow might be:
+A normal agent workflow looks like this:
 
-```text
-You:
-"Add support for custom transports."
+```mermaid
+sequenceDiagram
+    participant You
+    participant Agent as Coding agent
+    participant Jev as jev-pref
+    You->>Agent: Add support for custom transports.
+    Agent->>Agent: Implement
+    Agent->>Jev: review --hunks
+    Note over Jev: advisory: new_parallel_abstraction P=0.91<br/>[transport.ts:42] new transport abstraction<br/>alongside the existing Transport service
+    Jev-->>Agent: advisory finding
+    Agent->>Agent: Inspect, then refactor
+    Agent->>Jev: review --hunks
+    Jev-->>Agent: approve
+```
 
-        ↓
+What the agent does with each verdict:
 
-Coding agent implements it.
-
-        ↓
-
-Agent:
-"I've finished a substantial bout of work.
-Running the project semantic checks."
-
-        ↓
-
-npx jev-pref review --hunks
-
-        ↓
-
-jev-pref:
-advisory
-
-[packages/core/src/transport.ts:42]
-new_parallel_abstraction
-P=0.91
-
-This change introduces a new transport abstraction
-alongside the project's existing Transport service.
-
-        ↓
-
-Agent reads the finding, inspects the repository,
-and decides how to improve the implementation.
-
-        ↓
-
-Agent refactors the change.
-
-        ↓
-
-npx jev-pref review --hunks
-
-        ↓
-
-approve
+```mermaid
+flowchart TD
+    R[review --hunks] --> V{verdict?}
+    V -->|fix_now| F[address the finding]
+    F --> R
+    V -->|advisory| C[consider in context]
+    C --> R
+    V -->|approve| D[continue]
+    R -->|after 3 loops| U[ask the user]
 ```
 
 `jev-pref` is the **linter**.
