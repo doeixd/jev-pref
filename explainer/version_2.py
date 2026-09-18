@@ -35,6 +35,30 @@ MONO = "Cascadia Mono"
 SANS = "Segoe UI"
 
 
+# Layout zones (16 x 9 scene). Editor workflow lives left; explanation
+# lives right. Nothing crosses the gutter.
+LEFT_CENTER_X = -3.35
+RIGHT_CENTER_X = 4.9
+RIGHT_MAX_WIDTH = 4.1
+SAFE_MARGIN = 0.45
+
+
+def fit_width(mob, max_width):
+    if mob.width > max_width:
+        mob.scale_to_fit_width(max_width)
+    return mob
+
+
+def assert_in_frame(mob, margin=0.2):
+    fw = 16 / 2 - margin
+    fh = 9 / 2 - margin
+    assert mob.get_left()[0] >= -fw, f"escapes left: {mob}"
+    assert mob.get_right()[0] <= fw, f"escapes right: {mob}"
+    assert mob.get_bottom()[1] >= -fh, f"escapes bottom: {mob}"
+    assert mob.get_top()[1] <= fh, f"escapes top: {mob}"
+    return mob
+
+
 class JevPrefStory(Scene):
     def construct(self):
         self.camera.background_color = BG
@@ -44,6 +68,7 @@ class JevPrefStory(Scene):
         # ----------------------------------------------------
         editor = self.make_editor()
         self.play(FadeIn(editor, shift=0.15 * UP), run_time=0.9)
+        assert_in_frame(editor)
 
         agent_tag = self.pill("coding agent", BLUE)
         agent_tag.scale(0.72).next_to(editor, UP, buff=0.18).align_to(editor, RIGHT)
@@ -86,11 +111,15 @@ class JevPrefStory(Scene):
         added_label = self.pill("+ new abstraction", YELLOW)
         added_label.scale(0.65).next_to(editor, RIGHT, buff=0.22).shift(0.4 * UP)
 
+        # One authoritative code reference; morphs swap it, never mutate it.
+        code_current = code_before
         self.play(
-            FadeTransform(code_before, code_after),
+            ReplacementTransform(code_current, code_after),
             FadeIn(added_label, shift=0.1 * LEFT),
             run_time=1.0,
         )
+        code_current = code_after
+        assert_in_frame(code_current)
         self.wait(0.4)
 
         # ----------------------------------------------------
@@ -135,27 +164,28 @@ class JevPrefStory(Scene):
 
         self.play(Create(old_surface), Create(new_surface), run_time=0.7)
 
-        question = Text(
-            "…but the architecture is still wrong.",
-            font=SANS,
-            weight=BOLD,
-            color=TEXT,
-            font_size=34,
-        )
-        question.to_edge(RIGHT, buff=0.55).shift(0.8 * DOWN)
+        question = VGroup(
+            Text("…but the architecture", font=SANS, weight=BOLD, color=TEXT, font_size=28),
+            Text("is still wrong.", font=SANS, weight=BOLD, color=TEXT, font_size=28),
+        ).arrange(DOWN, aligned_edge=LEFT, buff=0.08)
+        fit_width(question, 3.3)
+        question.move_to([3.1, 0.05, 0])
 
         subquestion = Text(
             "How do you lint that?",
             font=SANS,
             color=ACCENT,
-            font_size=30,
-        ).next_to(question, DOWN, buff=0.24).align_to(question, LEFT)
+            font_size=26,
+        ).next_to(question, DOWN, buff=0.22).align_to(question, LEFT)
 
         self.play(
             FadeIn(question, shift=0.1 * UP),
             FadeIn(subquestion, shift=0.1 * UP),
+            FadeOut(added_label),
             run_time=0.7,
         )
+        assert_in_frame(question)
+        assert_in_frame(subquestion)
         self.wait(0.9)
 
         # ----------------------------------------------------
@@ -187,19 +217,25 @@ class JevPrefStory(Scene):
                 font_size=24,
             ),
             Text(
-                "Public primitives should compose",
+                "Public primitives compose",
                 font=MONO,
                 color=TEXT,
                 font_size=20,
             ),
             Text(
-                "through Surface rather than create",
+                "through Surface.",
                 font=MONO,
                 color=TEXT,
                 font_size=20,
             ),
             Text(
-                "parallel representations.",
+                "Don't create parallel",
+                font=MONO,
+                color=TEXT,
+                font_size=20,
+            ),
+            Text(
+                "representations.",
                 font=MONO,
                 color=TEXT,
                 font_size=20,
@@ -247,9 +283,10 @@ class JevPrefStory(Scene):
             FadeOut(policy_panel),
             FadeOut(policy_text),
             FadeOut(bridge),
-            Transform(concrete_q, rule_chip),
+            ReplacementTransform(concrete_q, rule_chip),
             run_time=0.8,
         )
+        concrete_q = rule_chip
 
         # ----------------------------------------------------
         # 6. Run jev-pref review
@@ -342,6 +379,9 @@ class JevPrefStory(Scene):
         verdict = self.pill("ADVISORY", YELLOW)
         verdict.scale(0.85).next_to(threshold, DOWN, buff=0.18)
         self.play(FadeIn(verdict, scale=0.9), run_time=0.5)
+        assert_in_frame(jev_box)
+        assert_in_frame(policy_box)
+        assert_in_frame(verdict)
         self.wait(0.5)
 
         # ----------------------------------------------------
@@ -392,7 +432,7 @@ class JevPrefStory(Scene):
             width=7.4,
             font_size=27,
         )
-        fixed_code.move_to(code_before)
+        fixed_code.move_to(code_current)
 
         fixing = self.pill("agent fixes implementation", BLUE)
         fixing.scale(0.70).next_to(editor, RIGHT, buff=0.18).shift(0.25 * DOWN)
@@ -400,10 +440,15 @@ class JevPrefStory(Scene):
         self.play(
             FadeOut(diagnostic),
             FadeOut(diag_arrow),
+            run_time=0.4,
+        )
+        self.play(
             FadeIn(fixing, shift=0.1 * LEFT),
-            Transform(code_before, fixed_code),
+            ReplacementTransform(code_current, fixed_code),
             run_time=1.0,
         )
+        code_current = fixed_code
+        assert_in_frame(code_current)
         self.wait(0.4)
 
         # ----------------------------------------------------
@@ -432,27 +477,41 @@ class JevPrefStory(Scene):
 
         self.play(
             FadeOut(fixing),
-            Transform(terminal, terminal2),
-            Transform(cmd, cmd2),
+            ReplacementTransform(terminal, terminal2),
+            ReplacementTransform(cmd, cmd2),
             FadeIn(result2, shift=0.1 * UP),
             run_time=0.8,
         )
+        terminal, cmd = terminal2, cmd2
         self.play(Flash(result2, color=GREEN, flash_radius=0.55), run_time=0.7)
         self.wait(0.6)
 
         # ----------------------------------------------------
         # 11. Pull back to the complete tooling stack
         # ----------------------------------------------------
+        # Hard chapter boundary: everything from the editor workflow goes.
         self.play(
             FadeOut(editor),
-            FadeOut(code_before),
+            FadeOut(code_current),
             FadeOut(concrete_q),
             FadeOut(terminal),
             FadeOut(cmd),
             FadeOut(result2),
             FadeOut(agent_tag),
+            FadeOut(added_label),
+            FadeOut(jev_box),
+            FadeOut(policy_box),
+            FadeOut(diff_arrow),
+            FadeOut(diff_label),
+            FadeOut(prob),
+            FadeOut(policy_arrow),
+            FadeOut(threshold),
+            FadeOut(verdict),
+            FadeOut(diagnostic),
+            FadeOut(diag_arrow),
             run_time=0.8,
         )
+        self.clear()
 
         stack_title = Text(
             "Your project has more than one kind of invariant.",
@@ -468,7 +527,9 @@ class JevPrefStory(Scene):
             self.stack_row("tests", "behavioral invariants", GREEN),
             self.stack_row("jev-pref", "semantic project rules", YELLOW),
         ).arrange(DOWN, buff=0.22, aligned_edge=LEFT)
+        fit_width(stack, 9.0)
         stack.move_to(ORIGIN + 0.15 * UP)
+        assert_in_frame(stack)
 
         self.play(FadeIn(stack_title, shift=0.1 * DOWN), run_time=0.5)
         self.play(
@@ -486,6 +547,7 @@ class JevPrefStory(Scene):
             FadeOut(stack),
             run_time=0.6,
         )
+        self.clear()
 
         final_title = Text(
             "jev-pref",
@@ -509,6 +571,7 @@ class JevPrefStory(Scene):
 
         final = VGroup(final_title, final_sub, final_cmd).arrange(DOWN, buff=0.34)
         final.move_to(ORIGIN)
+        assert_in_frame(final)
 
         self.play(FadeIn(final_title, shift=0.1 * UP), run_time=0.5)
         self.play(FadeIn(final_sub, shift=0.1 * UP), run_time=0.5)
