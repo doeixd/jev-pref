@@ -6,7 +6,7 @@ Set-Location (Join-Path $PSScriptRoot ".")
 $Video = "media/videos/jev_pref_explainer/1080p30/JevPrefExplainer.mp4"
 $OutDir = "media/frames"
 New-Item -ItemType Directory -Force -Path $OutDir | Out-Null
-foreach ($t in @(4, 12, 20, 30, 40, 50, 56)) {
+foreach ($t in @(4, 8, 12, 16, 20, 24, 28, 32, 36, 40, 44, 48, 50, 54, 56)) {
   ffmpeg -y -v error -ss $t -i $Video -frames:v 1 "$OutDir/frame_$t.png"
 }
 Write-Host "frames in $OutDir"

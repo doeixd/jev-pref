@@ -37,7 +37,7 @@ class JevPrefExplainer(Scene):
     def mono(self, text, size=31, color=WHITE_90, **kwargs):
         return Text(text, font="Cascadia Mono", font_size=size, color=color, **kwargs)
 
-    def box(self, width, height, stroke=WHITE_45, fill=BLACK, radius=0.18, stroke_width=2):
+    def box(self, width, height, stroke=WHITE_45, fill=BLACK, radius=0.18, stroke_width=2, opacity=1):
         return RoundedRectangle(
             width=width,
             height=height,
@@ -45,7 +45,7 @@ class JevPrefExplainer(Scene):
             stroke_color=stroke,
             stroke_width=stroke_width,
             fill_color=fill,
-            fill_opacity=1,
+            fill_opacity=opacity,
         )
 
     def label_box(self, title, subtitle=None, width=4.2, height=1.35, title_size=34):
@@ -160,34 +160,34 @@ class JevPrefExplainer(Scene):
         self.play(FadeIn(section))
 
         guidance_title = self.t("Project guidance", 24, color=WHITE_45, weight=BOLD)
-        guidance_title.move_to(UP * 2.85 + LEFT * 3.9)
-        guidance_box = self.box(6.6, 2.25, stroke=WHITE_45)
-        guidance_box.move_to(LEFT * 3.9 + UP * 1.25)
+        guidance_title.move_to(UP * 2.85 + LEFT * 4.85)
+        guidance_box = self.box(6.1, 2.4, stroke=WHITE_45)
+        guidance_box.move_to(LEFT * 4.85 + UP * 1.25)
         guidance_text = self.t(
             '"Public primitives should compose with\nexisting primitives rather than introduce\nparallel systems."',
-            27,
+            21,
             color=WHITE_90,
             line_spacing=0.85,
         )
         guidance_text.move_to(guidance_box)
 
-        agent = self.label_box("coding agent", "shapes the intent", width=3.0, height=1.35, title_size=31)
-        agent.move_to(ORIGIN + RIGHT * 0.15)
+        agent = self.label_box("coding agent", "shapes the intent", width=2.4, height=1.35, title_size=27)
+        agent.move_to(ORIGIN)
 
         check_title = self.t("Concrete Jev check", 24, color=WHITE_45, weight=BOLD)
-        check_title.move_to(UP * 2.85 + RIGHT * 4.05)
-        check_box = self.box(6.7, 2.55, stroke=WHITE_90)
-        check_box.move_to(RIGHT * 4.0 + UP * 1.25)
+        check_title.move_to(UP * 2.85 + RIGHT * 4.85)
+        check_box = self.box(6.1, 2.6, stroke=WHITE_90)
+        check_box.move_to(RIGHT * 4.85 + UP * 1.25)
         check_text = self.t(
             "Does this diff introduce another representation\nof a concept already represented by the\nproject's Surface abstraction?",
-            25,
+            20,
             color=WHITE_90,
             line_spacing=0.82,
         )
         check_text.move_to(check_box)
 
-        a1 = Arrow(guidance_box.get_right(), agent.get_left(), buff=0.2, color=WHITE_45)
-        a2 = Arrow(agent.get_right(), check_box.get_left(), buff=0.2, color=WHITE_45)
+        a1 = Arrow(guidance_box.get_right(), agent.get_left(), buff=0.1, color=WHITE_45)
+        a2 = Arrow(agent.get_right(), check_box.get_left(), buff=0.1, color=WHITE_45)
 
         self.play(FadeIn(guidance_title), Create(guidance_box), FadeIn(guidance_text), run_time=0.7)
         self.play(GrowArrow(a1), FadeIn(agent), run_time=0.65)
@@ -216,8 +216,8 @@ class JevPrefExplainer(Scene):
             ("+ export interface TransportSurface {", WHITE_90),
             ("+   send(input: Request): Effect<Response>", WHITE_90),
             ("+ }", WHITE_90),
-            ("", WHITE_70),
-            ("  // existing Surface already models this boundary", WHITE_45),
+            (" ", WHITE_70),
+            ("  // Surface already models this", WHITE_45),
         ]
         lines = VGroup(*[self.mono(s, 26, color=c) for s, c in diff_lines])
         lines.arrange(DOWN, buff=0.18, aligned_edge=LEFT)
@@ -226,11 +226,11 @@ class JevPrefExplainer(Scene):
         self.play(Create(diff_box), FadeIn(lines, lag_ratio=0.06), run_time=1.0)
         self.wait(1.4)
 
-        lens = self.box(5.4, 1.1, stroke=WHITE_90, radius=0.12, stroke_width=2)
+        lens = self.box(5.4, 1.1, stroke=WHITE_90, radius=0.12, stroke_width=2, opacity=0)
         lens.move_to(lines[2:5].get_center())
         lens.align_to(lines[2], LEFT).shift(RIGHT * 2.4)
         label = self.t("visible evidence", 22, color=WHITE_90, weight=BOLD)
-        label.next_to(lens, RIGHT, buff=0.3)
+        label.next_to(lens, DOWN, buff=0.25)
         self.play(Create(lens), FadeIn(label))
         self.wait(1.2)
         self.wipe(section, cmd, diff_box, lines, lens, label)
