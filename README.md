@@ -880,3 +880,5 @@ npx jev-pref setup
 ```
 
 Then let your agent take it from there.
+
+<!-- dogfood trial: verifies the review workflow with repo secret -->
