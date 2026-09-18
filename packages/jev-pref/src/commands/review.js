@@ -61,22 +61,49 @@ async function readStdinDiff(out, { stdin = process.stdin } = {}) {
   return Buffer.concat(chunks).toString("utf8");
 }
 
-function suiteQuestions(config) {
+function suiteQuestions(config, prefs = config.prefs) {
   const questions = {};
   for (const suiteId of config.suites) {
     const suite = SUITES[suiteId];
-    Object.assign(questions, suiteId === "prefs" ? suite.buildQuestions(config.prefs) : suite.buildQuestions());
+    Object.assign(questions, suiteId === "prefs" ? suite.buildQuestions(prefs) : suite.buildQuestions());
   }
   return questions;
 }
 
-function judgeSuites(config, answers) {  return config.suites.map((suiteId) => {
+function judgeSuites(config, answers, prefs = config.prefs) {  return config.suites.map((suiteId) => {
     const suite = SUITES[suiteId];
     const v = suiteId === "prefs"
-      ? suite.judge(config.prefs, answers, config)
+      ? suite.judge(prefs, answers, config)
       : suite.judge(answers, config);
     return { suite: suiteId, ...v };
   });
+}
+
+/** Presentable question map: Jev wire type "noul" is a condition. */
+export function displayQuestions(questions) {
+  const out = {};
+  for (const [key, q] of Object.entries(questions ?? {})) {
+    out[key] = { ...q, type: q?.type === "noul" ? "condition" : q?.type };
+  }
+  return out;
+}
+
+export function countAdvisories(suiteVerdicts) {
+  let n = 0;
+  for (const v of suiteVerdicts ?? []) {
+    n += (v.notes ?? []).length;
+    for (const c of v.classifications ?? []) {
+      // Count only printed sub-threshold signals: labeled (choice) advisory
+      // classifications in an approving suite. Unlabeled condition entries
+      // always carry their gate/advisory mapping even at P=0, so counting them
+      // would report advisories that never fired.
+      if (!c.label || c.outcome !== "advisory") continue;
+      if ((v.outcome ?? "approve") !== "approve") continue;
+      if ((v.notes ?? []).some((note) => String(note).includes(`${c.id}=${c.label}`))) continue;
+      n += 1;
+    }
+  }
+  return n;
 }
 
 function worstOf(verdicts) {
@@ -86,6 +113,9 @@ function worstOf(verdicts) {
 }
 
 // Exported for unit tests (pure rendering, no IO).
+// Confidence is informational only: thresholds gate on probability (P).
+// Advisory-only passes stay distinct from clean approvals so the exit-code
+// contract (0 for advisory when failOn=gates) is not misread as clean.
 export function renderVerdict(suiteVerdicts, scope = "") {
   const worst = worstOf(suiteVerdicts);
   const tag = scope ? `[${scope}] ` : "";
@@ -98,8 +128,19 @@ export function renderVerdict(suiteVerdicts, scope = "") {
     }
     for (const f of [...v.failures, ...v.notes]) lines.push(`- ${tag}[${v.suite}] ${f}`);
   }
-  const head = `${tag}${worst} (suites: ${suiteVerdicts.map((v) => `${v.suite}=${v.outcome}`).join(", ")})`;
-  if (worst === "approve") return lines.length > 0 ? `${head}\n${lines.join("\n")}` : head;
+  const advisoryCount = countAdvisories(suiteVerdicts);
+  const suiteSummary = suiteVerdicts.map((v) => `${v.suite}=${v.outcome}`).join(", ");
+  if (worst === "advisory") {
+    const head = `${tag}advisory (${advisoryCount} ${advisoryCount === 1 ? "advisory" : "advisories"}, suites: ${suiteSummary})`;
+    return lines.length > 0 ? `${head}\n${lines.join("\n")}` : `${head}\n- minor notes`;
+  }
+  if (worst === "approve") {
+    const head = advisoryCount > 0
+      ? `${tag}approve with ${advisoryCount} ${advisoryCount === 1 ? "advisory" : "advisories"} (suites: ${suiteSummary})`
+      : `${tag}approve (suites: ${suiteSummary})`;
+    return lines.length > 0 ? `${head}\n${lines.join("\n")}` : head;
+  }
+  const head = `${tag}${worst} (suites: ${suiteSummary})`;
   return lines.length > 0 ? `${head}\n${lines.join("\n")}` : `${head}\n- minor notes`;
 }
 
@@ -304,14 +345,26 @@ export async function review(argv, { cwd = ".", out = console } = {}) {
     return 2;
   }
 
-  const baseState = {
-    prefs: config.prefs.map(prefsSuite.describePreference),
+  const { hunkPrefs, changePrefs } = prefsSuite.partitionPrefs(config.prefs);
+  const hunkStatePrefs = hunkPrefs.map(prefsSuite.describePreference);
+  const changeStatePrefs = changePrefs.map(prefsSuite.describePreference);
+  const baseCommon = {
     untracked_files: gs.untracked === "" ? "(none)" : gs.untracked,
     git_status: gs.status === "" ? "(clean)" : gs.status,
     diff_stat: gs.stat === "" ? "(empty)" : gs.stat,
     context: `branch ${gs.branch}, scope ${gs.scope}`,
   };
+  const baseState = {
+    prefs: config.prefs.map(prefsSuite.describePreference),
+    ...baseCommon,
+  };
   const note = "complete review scope included; requests stay below the configured per-request diff budget.";
+  const changeNote = `${note} Change-scoped preferences evaluate once against the whole diff.`;
+  const questionsHunk = suiteQuestions(config, hunkPrefs);
+  const questionsChange = changePrefs.length > 0 && config.suites.includes("prefs")
+    ? prefsSuite.buildQuestions(changePrefs)
+    : {};
+  const questions = suiteQuestions(config);
 
   const client = {
     apiKey: resolveApiKey(),
@@ -329,7 +382,9 @@ export async function review(argv, { cwd = ".", out = console } = {}) {
   const scopedMode = hunksMode || filesMode;
   const scopeKind = hunksMode ? "hunks" : filesMode ? "files" : "whole-diff";
   let scopes;
+  let changeState = null;
   if (scopedMode) {
+    const hunkBase = { ...baseCommon, prefs: hunkStatePrefs };
     const trackedDiff = gs.trackedDiff ?? gs.diff;
     const tracked = hunksMode ? splitHunks(trackedDiff) : splitFiles(trackedDiff);
     // Untracked files are not in `git diff` — each becomes its own scope.
@@ -340,7 +395,7 @@ export async function review(argv, { cwd = ".", out = console } = {}) {
         file: s.file,
         start: 1,
         count: lines,
-        state: { ...baseState, new_file: s.file, diff: s.text, note },
+        state: { ...hunkBase, new_file: s.file, diff: s.text, note },
         files: [s.file],
       };
     });
@@ -352,7 +407,7 @@ export async function review(argv, { cwd = ".", out = console } = {}) {
         start: item.start,
         count: item.count,
         state: {
-          ...baseState,
+          ...hunkBase,
           ...(hunksMode ? { hunk: { file: item.file, label, header: item.header } } : { changed_file: item.file }),
           diff: item.body,
           note,
@@ -383,11 +438,14 @@ export async function review(argv, { cwd = ".", out = console } = {}) {
       }
       scopes = parts.map((part, index) => ({
         label: parts.length === 1 ? "input" : `input (part ${index + 1}/${parts.length})`,
-        state: { ...baseState, diff: part, note: `${note} Input was not a parseable unified diff.` },
+        state: { ...hunkBase, diff: part, note: `${note} Input was not a parseable unified diff.` },
         files: [],
       }));
     } else {
       scopes = all;
+    }
+    if (changePrefs.length > 0) {
+      changeState = { ...baseCommon, prefs: changeStatePrefs, diff: gs.diff, note: changeNote };
     }
   } else {
     scopes = [{ label: "", state: { ...baseState, diff: gs.diff, note }, files: [] }];
@@ -402,9 +460,13 @@ export async function review(argv, { cwd = ".", out = console } = {}) {
     return 2;
   }
 
-  const questions = suiteQuestions(config);
-  for (const scope of scopes) {
-    const inputChars = serializedInputChars(scope.state, questions);
+  // Budget checks use the exact per-call inputs: hunk questions per scope,
+  // change questions once against the whole diff.
+  const scopeInputs = scopes.map((scope) => ({
+    scope,
+    inputChars: serializedInputChars(scope.state, scopedMode ? questionsHunk : questions),
+  }));
+  for (const { inputChars } of scopeInputs) {
     if (inputChars > SAFE_SERIALIZED_INPUT_CHARS) {
       out.error(
         `review-error: planned Jev input is ${inputChars} characters before tokenization. ` +
@@ -413,36 +475,109 @@ export async function review(argv, { cwd = ".", out = console } = {}) {
       return 2;
     }
   }
+  let changeInputChars = 0;
+  if (changeState) {
+    if (changeState.diff.length > config.maxDiffChars) {
+      out.error(
+        `review-error: whole diff (${changeState.diff.length} chars) exceeds the ${config.maxDiffChars}-character per-request budget for change-scoped preferences. ` +
+        "Review a smaller change or narrow scope with --include/--exclude; incomplete input is not approval.",
+      );
+      return 2;
+    }
+    changeInputChars = serializedInputChars(changeState, questionsChange);
+    if (changeInputChars > SAFE_SERIALIZED_INPUT_CHARS) {
+      out.error(
+        `review-error: planned Jev input is ${changeInputChars} characters before tokenization. ` +
+        `Jev accepts at most ${JEV_INPUT_TOKEN_LIMIT} input tokens; reduce maxDiffChars, preferences, or review scope.`,
+      );
+      return 2;
+    }
+  }
   if (dryRun) {
+    const shownQuestions = displayQuestions(questions);
+    const prefSummaries = config.prefs.map((p) => prefsSuite.summarizePreference(p));
+    const largestScopeInput = Math.max(0, ...scopeInputs.map((s) => s.inputChars), changeInputChars);
+    const budget = {
+      tokenLimit: JEV_INPUT_TOKEN_LIMIT,
+      safeSerializedChars: SAFE_SERIALIZED_INPUT_CHARS,
+      maxDiffChars: config.maxDiffChars,
+      scopeCount: scopes.length,
+      maxHunks: config.maxHunks,
+      changeScoped: changePrefs.length,
+      largestInputChars: largestScopeInput,
+      fits: largestScopeInput <= SAFE_SERIALIZED_INPUT_CHARS,
+    };
     const preview = scopedMode
       ? {
         mode: "dry-run",
         granularity: scopeKind,
         suites: config.suites,
-        scopes: scopes.map((s) => ({ label: s.label || "(whole-diff)", file: s.file, state: { ...s.state, diff: s.state.diff.slice(0, 500) } })),
-        questions,
-        note: `Jev input limit: 30k tokens; diff budget per request: ${config.maxDiffChars} characters.`,
+        prefs: prefSummaries,
+        scopes: scopes.map((s, i) => ({
+          label: s.label || "(whole-diff)",
+          file: s.file,
+          start: s.start,
+          count: s.count,
+          prefIds: hunkPrefs.map((p) => p.id),
+          inputChars: scopeInputs[i].inputChars,
+          stateChars: s.state.diff.length,
+          state: { diff: s.state.diff.slice(0, 500) },
+        })),
+        ...(changeState
+          ? {
+            change: {
+              label: "change",
+              prefIds: changePrefs.map((p) => p.id),
+              inputChars: changeInputChars,
+              stateChars: changeState.diff.length,
+              state: { diff: changeState.diff.slice(0, 500) },
+            },
+          }
+          : {}),
+        questions: shownQuestions,
+        budget,
+        note: `Jev input limit: ${JEV_INPUT_TOKEN_LIMIT} tokens (${SAFE_SERIALIZED_INPUT_CHARS} serialized chars guard); diff budget per request: ${config.maxDiffChars} characters. Pref list appears once above; scopes carry pref ids only. Conditions are Jev native type noul (Bernoulli p(true) -> {chance}); choices carry criteria labels.`,
       }
       : {
         mode: "dry-run",
         granularity: "whole-diff",
         suites: config.suites,
-        state: { ...scopes[0].state, diff: scopes[0].state.diff.slice(0, 2000) },
-        questions,
+        prefs: prefSummaries,
+        state: { diff: scopes[0].state.diff.slice(0, 2000) },
+        questions: shownQuestions,
+        budget,
       };
     out.log(JSON.stringify(preview, null, 2));
     return 0;
   }
 
-  // One Jev call per scope, sequential (rate-limit friendly). The client
-  // loads lazily so --dry-run works with zero dependencies installed.
+  // One Jev call per scope plus one for change-scoped prefs, sequential
+  // (rate-limit friendly). The client loads lazily so --dry-run works with
+  // zero dependencies installed.
   const { evaluate, JevError, JevOverloadedError } = await import("../jev.js");
   const scopeResults = [];
+  let changeResult = null;
   try {
-    for (const scope of scopes) {
-      const answers = await evaluate({ state: scope.state, questions, client, timeoutMs });
-      const suiteVerdicts = judgeSuites(config, answers);
-      scopeResults.push({ ...scope, state: undefined, suiteVerdicts, outcome: worstOf(suiteVerdicts) });
+    const hasHunkQuestions = Object.keys(questionsHunk).length > 0;
+    // Skip per-scope calls when only change-scoped prefs remain and the
+    // secrets suite is off — there would be no questions to ask per scope.
+    if (hasHunkQuestions || !changeState) {
+      for (const scope of scopes) {
+        const answers = await evaluate({
+          state: scope.state,
+          questions: scopedMode ? questionsHunk : questions,
+          client,
+          timeoutMs,
+        });
+        const suiteVerdicts = judgeSuites(config, answers, scopedMode ? hunkPrefs : config.prefs);
+        scopeResults.push({ ...scope, state: undefined, suiteVerdicts, outcome: worstOf(suiteVerdicts) });
+      }
+    }
+    if (changeState) {
+      const answers = await evaluate({ state: changeState, questions: questionsChange, client, timeoutMs });
+      const judged = prefsSuite.judge(changePrefs, answers, config);
+      const suiteVerdicts = [{ suite: "prefs", ...judged }];
+      changeResult = { label: "change", outcome: judged.outcome, suiteVerdicts };
     }
   } catch (e) {
     if (e instanceof JevError || e instanceof JevOverloadedError) {
@@ -455,20 +590,36 @@ export async function review(argv, { cwd = ".", out = console } = {}) {
     throw e;
   }
 
-  const allVerdicts = scopeResults.flatMap((s) => s.suiteVerdicts);
+  const allVerdicts = [...scopeResults.flatMap((s) => s.suiteVerdicts), ...(changeResult ? changeResult.suiteVerdicts : [])];
   const overall = worstOf(allVerdicts);
+  const advisoryCount = countAdvisories(allVerdicts);
   let text;
   let payload;
-  if (scopeResults.length === 1 && !scopeResults[0].label) {
+  if (scopeResults.length === 1 && !scopeResults[0].label && !changeResult) {
     text = renderVerdict(scopeResults[0].suiteVerdicts);
-    payload = { outcome: overall, suites: scopeResults[0].suiteVerdicts, files: [] };
-  } else {
-    const blocks = scopeResults.map((s) => renderVerdict(s.suiteVerdicts, s.label));
-    text = `${overall} (${scopeResults.length} ${scopeKind} scopes)\n${blocks.join("\n")}`;
+    payload = { outcome: overall, advisoryCount, suites: scopeResults[0].suiteVerdicts, files: [] };
+  } else if (scopeResults.length === 0 && changeResult) {
+    text = renderVerdict(changeResult.suiteVerdicts, "change");
     payload = {
       outcome: overall,
+      advisoryCount,
+      change: { outcome: changeResult.outcome, suites: changeResult.suiteVerdicts },
+      files: [...new Set((scopes.flatMap((s) => s.files ?? [])))],
+    };
+  } else {
+    const blocks = scopeResults.map((s) => renderVerdict(s.suiteVerdicts, s.label));
+    if (changeResult) blocks.push(renderVerdict(changeResult.suiteVerdicts, "change"));
+    const changeSuffix = changeResult ? " + change" : "";
+    const advisorySuffix = overall === "fix_now" || advisoryCount === 0 ? "" : `, ${advisoryCount} ${advisoryCount === 1 ? "advisory" : "advisories"}`;
+    const headOutcome = overall === "approve" && advisoryCount > 0
+      ? `approve with ${advisoryCount} ${advisoryCount === 1 ? "advisory" : "advisories"}`
+      : overall;
+    text = `${headOutcome} (${scopeResults.length} ${scopeKind} scopes${changeSuffix}${advisorySuffix})\n${blocks.join("\n")}`;
+    payload = {
+      outcome: overall,
+      advisoryCount,
       scopes: scopeResults.map((s) => ({ label: s.label, file: s.file, start: s.start, count: s.count, outcome: s.outcome, suites: s.suiteVerdicts })),
-      ...(hunksMode ? { hunks: scopeResults.map((s) => ({ label: s.label, file: s.file, start: s.start, count: s.count, outcome: s.outcome, suites: s.suiteVerdicts })) } : {}),
+      ...(changeResult ? { change: { outcome: changeResult.outcome, suites: changeResult.suiteVerdicts } } : {}),
       files: [...new Set(scopeResults.flatMap((s) => s.files))],
     };
   }

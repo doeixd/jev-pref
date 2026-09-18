@@ -49,6 +49,14 @@ describe("validateConfig", () => {
     assert.ok(validateConfig(valid({ prefs: [{ ...choice, outcomes: { none: "approve" } }] })).some((e) => e.includes("exactly match")));
     assert.ok(validateConfig(valid({ prefs: [{ id: "vague", gate: false }] })).some((e) => e.includes("needs a non-empty question")));
   });
+
+  it("validates hunk|change scope and defaults to hunk", async () => {
+    const { prefScope } = await import("../src/suites/prefs.js");
+    assert.equal(prefScope({ id: "x" }), "hunk");
+    assert.equal(prefScope({ id: "x", scope: "change" }), "change");
+    assert.deepEqual(validateConfig(valid({ prefs: [{ ...goodPrefs[0], scope: "change" }] })), []);
+    assert.ok(validateConfig(valid({ prefs: [{ ...goodPrefs[0], scope: "whole" }] })).some((e) => e.includes("scope must be hunk|change")));
+  });
 });
 
 describe("extractFencedBlock", () => {

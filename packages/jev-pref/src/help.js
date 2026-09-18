@@ -22,6 +22,8 @@ Granularity:
   --files           one bounded Jev call per changed file/new file.
                     JEV_FILES=1 also enables. Mutually exclusive with --hunks.
   --no-files        disable file mode set by config/environment.
+  Prefs may set scope hunk (default, per hunk/file) or change (once
+                    against the whole diff; use for file-add/rename questions).
   --max-hunks N     maximum scoped calls (hunks, files, or split parts;
                     default 10). Overflow fails with guidance to narrow scope;
                     it never falls back to an oversized whole-diff request.
@@ -30,10 +32,14 @@ Filter:
   --include G       only paths matching glob G (repeatable, comma-separated).
   --exclude G       skip paths matching glob G (repeatable).
 
-Suites & thresholds:
+Suites & thresholds (all cutoffs apply to probability P, never to
+                         confidence, which is informational only):
   --suites a,b      csv subset (known: prefs, secrets). Default from config.
-  --gate-threshold N       P cutoff for gate prefs / secrets (0..1).
-  --advisory-threshold N   P cutoff for advisory prefs (0..1).
+  --gate-threshold N       P cutoff for gate conditions, secrets, AND choice
+                           labels mapped to fix_now (0..1).
+  --advisory-threshold N   P cutoff for advisory conditions and advisory-mapped
+                           labels (0..1). A fix_now-mapped label with P between
+                           the two cutoffs reports as an uncertain-gate note.
   --fail-on gates|all|never   gates: exit 1 only on fix_now (default).
                               all: exit 1 on advisory too. never: always 0.
 
@@ -47,6 +53,42 @@ Agent handoff (verdict piped to your command, argv only — never a shell):
   --agent-on LIST          csv outcomes that trigger it (default fix_now).
   --agent-timeout-ms MS    handoff timeout (default 300000).
 
+Evidence envelope (exactly what Jev sees per call; --dry-run prints
+                    this literally as serialized {state, questions} JSON):
+  state: prefs (subset descriptions for this call), diff (the hunk/file
+                    body, or the whole diff for change-scoped and whole-diff
+                    calls), plus hunk {file, label, header} in --hunks mode,
+                    changed_file in --files mode, or new_file for untracked
+                    files; always untracked_files, git_status, diff_stat,
+                    context (branch/scope), and a completeness note.
+                    Filenames ARE visible: diff headers, hunk headers, and the
+                    file/label fields above. Write guidance against that
+                    envelope, not against the whole repo.
+  questions: one per pref — condition sends instructions (+ appended
+                    answer-true-only-when-visible sentence) as Jev native type
+                    noul (Bernoulli p(true) estimation; answer {chance: P});
+                    choice sends instructions + criteria labels (answer
+                    {choice, probabilities, confidence}).
+  Think Bernoulli, not boolean: a condition asks Jev to estimate p(true)
+                    from visible evidence; the threshold is the decision
+                    boundary on p. Name the visible fact that moves p in
+                    guidance ("count only ...") rather than restating truth
+                    conditions.
+
+Probability x confidence x threshold:
+  Only P gates. Confidence never suppresses or applies an outcome.
+  Below-threshold top label: a choice whose selected label scores below its
+                    outcome's cutoff falls through to approve for that scope
+                    (no failure, no note); the classification line is still
+                    printed with its P and confidence. No fallback to the next
+                    label is attempted.
+
+Cost model (calls are sequential, rate-limit friendly):
+  One Jev call per hunk/file scope, plus one whole-diff call when any pref
+                    is change-scoped. 10 hunks ~= 10 calls; --files collapses
+                    each file to one call (prefer it for broad reviews); narrow
+                    with --include/--exclude before raising --max-hunks.
+
 Client:
   --config PATH     project config (default jev-pref.json, walking up to the
                     git root). A companion jev-pref.local.json loads after it.
@@ -57,8 +99,13 @@ Client:
 
 Output:
   --json            machine-readable verdict on stdout (progress goes to
-                    stderr, so stdout stays parseable).
-  --dry-run, -n     print questions/state without calling Jev (free).
+                    stderr, so stdout stays parseable). Canonical scope key is
+                    scopes (with advisoryCount); no duplicated hunks array.
+  --dry-run, -n     print questions/state without calling Jev (free). Pref list
+                    once, scopes carry pref ids only, plus a token-budget
+                    estimate against the 30k limit. Questions display as
+                    condition/choice; condition is Jev's native noul type
+                    (Bernoulli p(true) -> {chance: P}).
 
 Exit codes: 0 approve/ok, 1 gate violated, 2 config/infra/usage error.
 Jev accepts at most 30k input tokens. Prefer small changes, --hunks, --files,
@@ -82,9 +129,16 @@ const SYNC = `jev-pref sync — reconcile project guidance and Jev preferences
 
 Usage: jev-pref sync
 
-Prints a repository-aware protocol for checking bidirectional semantic drift
-between human-readable project guidance, shared/personal Jev policy, and review
-wiring. It never edits files or makes policy decisions itself.
+Input:  reads AGENTS.md / CLAUDE.md / AGENT.md / CONTRIBUTING.md presence,
+                    jev-pref.json + jev-pref.local.json (counts, validity), and
+                    git ignore state. Nothing is written.
+Output: prints the repository-aware bidirectional reconciliation protocol the coding agent
+                    follows: which guidance files vs which policy layers to
+                    read, the DIRECT / NEEDS SHAPING / NOT FOR JEV
+                    classification, the scope check (whole-diff questions need
+                    scope:change), and the verify step (review --dry-run +
+                    report changed files and pref ids). The agent edits files;
+                    sync itself changes nothing and makes no policy decisions.
 
 Exit codes: 0 instructions printed, 2 usage error.
 `;
@@ -111,13 +165,26 @@ const TUNE = `jev-pref tune — calibrate thresholds against labeled evals
 Usage: jev-pref tune [--sweep] [--check[=N]] [--evals-dir DIR] [--dry-run]
        [--config PATH]
 
-  evals/*.json: condition expected values are true|false; choice expected
-                values are configured label strings.
-  (default dir ./evals; --evals-dir overrides.)
-  --sweep           try thresholds 0.5..0.9, propose the best as a config diff.
+Input:  evals/*.json files, each {name, diff, expected} where expected maps
+                    pref id -> true|false (conditions: violation present?) or
+                    a configured label string (choices). (Default dir ./evals;
+                    --evals-dir overrides.) Malformed files are skipped with a
+                    "skip <file>" line; zero runnable cases is exit 2.
+Output: one Jev call per case (state {prefs, diff}, all questions batched),
+                    then "accuracy @ gateThreshold=T: N% over M cases".
+                    Accuracy counts every labeled (case, pref) pair: conditions
+                    compare (P >= threshold) vs expected; choices compare the
+                    selected label vs expected (threshold-independent).
+                    "Calibrated" = highest accuracy on your labels.
+  --sweep           re-score the frozen Jev answers over the grid
+                    0.5, 0.6, 0.7, 0.8, 0.9 and print a proposed config diff
+                    (gateThreshold OLD -> NEW). Nothing is written; apply with
+                    your editor and re-run tune to confirm. Only the shared
+                    gateThreshold is swept, not per-pref values.
   --check           fail (exit 1) if accuracy @ gateThreshold is below the bar
                     (0.5 bare; --check=0.8 to set it). For CI gates.
-  --dry-run         list runnable cases without calling Jev (free).
+  --dry-run         list runnable cases + the sweep grid without calling Jev
+                    (free, keyless).
   --config PATH     project config (default jev-pref.json, walking up to the
                     git root); a companion jev-pref.local.json loads after it.
 

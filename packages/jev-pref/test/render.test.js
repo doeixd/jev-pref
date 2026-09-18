@@ -36,4 +36,14 @@ describe("renderVerdict", () => {
     assert.match(text, /api_change=additive/);
     assert.match(text, /confidence=0\.80 -> approve/);
   });
+
+  it("counts advisories in heads instead of clean approve", () => {
+    const advisory = [{ suite: "prefs", outcome: "advisory", failures: [], notes: ["a P=0.80 q"] }];
+    assert.match(renderVerdict(advisory), /advisory \(1 advisory/);
+    const subThreshold = [{
+      suite: "prefs", outcome: "approve", failures: [], notes: [],
+      classifications: [{ id: "api_change", label: "behavioral", probability: 0.5, confidence: 0.9, outcome: "advisory" }],
+    }];
+    assert.match(renderVerdict(subThreshold), /approve with 1 advisory/);
+  });
 });

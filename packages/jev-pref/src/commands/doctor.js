@@ -63,7 +63,7 @@ export async function doctor(argv, { cwd = ".", out = console } = {}) {
         if (k === "prefs") continue;
         push(`config.${k} <= ${sources[k] ?? "?"}`, true, JSON.stringify(v));
       }
-      push("prefs count", true, `${config.prefs.length} [${config.prefs.map((p) => `${p.id}:${p.type === "choice" ? "choice" : p.gate ? "gate" : "adv"}`).join(", ")}]`);
+      push("prefs count", true, `${config.prefs.length} [${config.prefs.map((p) => `${p.id}:${p.type === "choice" ? "choice" : p.gate ? "gate" : "adv"}${p.scope === "change" ? "@change" : ""}`).join(", ")}]`);
       push("project config", true, configPath);
       push("local config", true, localConfigFound ? `loaded ${localConfigPath}` : `not found (${localConfigPath})`);
       if (fencedFile) push("fenced block", true, `from ${fencedFile}`);

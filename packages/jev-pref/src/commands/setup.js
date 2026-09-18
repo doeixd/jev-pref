@@ -88,7 +88,70 @@ export function inspectRepository(cwd = ".") {
     hasProjectFile("pyproject.toml") || hasProjectFile("requirements.txt") ? "Python" : null,
     hasProjectFile("Cargo.toml") ? "Rust" : null,
   ].filter(Boolean);
-  return { root, git, sources, config, localConfig, localIgnored, localTracked, auth, workflows, project };
+  const deterministic = inspectDeterministicCoverage(root, projectRoots);
+  return { root, git, sources, config, localConfig, localIgnored, localTracked, auth, workflows, project, deterministic };
+}
+
+function readPackageScripts(dir) {
+  try {
+    const pkg = JSON.parse(readFileSync(join(dir, "package.json"), "utf8"));
+    return pkg?.scripts && typeof pkg.scripts === "object" ? pkg.scripts : {};
+  } catch {
+    return {};
+  }
+}
+
+function listFilesRecursive(dir, depth = 0) {
+  if (depth > 3) return [];
+  let entries;
+  try {
+    entries = readdirSync(dir, { withFileTypes: true });
+  } catch {
+    return [];
+  }
+  const out = [];
+  for (const e of entries) {
+    if (e.name === "node_modules" || e.name === ".git" || e.name === "dist") continue;
+    if (e.isFile()) out.push(e.name);
+    else if (e.isDirectory() && depth < 2) {
+      for (const f of listFilesRecursive(join(dir, e.name), depth + 1)) out.push(`${e.name}/${f}`);
+    }
+    if (out.length > 200) break;
+  }
+  return out;
+}
+
+export function inspectDeterministicCoverage(root, projectRoots = [root]) {
+  const scripts = {};
+  for (const dir of projectRoots.slice(0, 8)) {
+    for (const [name, cmd] of Object.entries(readPackageScripts(dir))) {
+      if (!scripts[name]) scripts[name] = String(cmd).slice(0, 120);
+    }
+  }
+  const scriptNames = Object.keys(scripts);
+  const hasScript = (...patterns) => scriptNames.filter((n) => patterns.some((p) => n.includes(p)));
+  const signals = [];
+  const lintScripts = hasScript("lint");
+  if (lintScripts.length > 0) signals.push(`lint scripts (${lintScripts.join(", ")}) — static/cast/portability style rules belong there, NOT FOR JEV`);
+  const portabilityScripts = scriptNames.filter((n) => /portab/i.test(n));
+  if (portabilityScripts.length > 0) signals.push(`portability checks (${portabilityScripts.join(", ")}) — NOT FOR JEV`);
+  if (hasScript("test", "check", "typecheck", "type").length > 0) {
+    signals.push(`tests/type checks (${hasScript("test", "check", "typecheck", "type").slice(0, 4).join(", ")}) — behavioral invariants belong in tests, NOT FOR JEV`);
+  }
+  if (hasScript("format", "prettier").length > 0) signals.push("formatters — formatting is NOT FOR JEV");
+  const files = listFilesRecursive(root);
+  const match = (re) => files.filter((f) => re.test(f)).slice(0, 5);
+  const castTests = match(/cast/i);
+  if (castTests.length > 0) signals.push(`cast coverage (${castTests.join(", ")}) — casts are tested deterministically, NOT FOR JEV`);
+  const manifestTests = match(/manifest/i);
+  if (manifestTests.length > 0) signals.push(`manifest coverage (${manifestTests.join(", ")}) — manifest shape is tested deterministically, NOT FOR JEV`);
+  const portabilityFiles = match(/portab/i);
+  if (portabilityFiles.length > 0) signals.push(`portability files (${portabilityFiles.join(", ")}) — NOT FOR JEV`);
+  const namespaceFiles = match(/namespace/i);
+  if (namespaceFiles.length > 0) signals.push(`namespace files (${namespaceFiles.join(", ")}) — check whether lint/tests already cover namespaces before encoding as Jev`);
+  const secretScanning = match(/secret|gitleaks|trufflehog/i);
+  if (secretScanning.length > 0) signals.push(`secret scanning (${secretScanning.join(", ")}) — known credential formats belong in scanners, NOT FOR JEV`);
+  return { scripts: scriptNames.slice(0, 20), signals: signals.slice(0, 10) };
 }
 
 function mark(found, text) {
@@ -115,6 +178,10 @@ export function renderSetup(info) {
     : "GitHub Actions workflows not found";
   const authLines = auth.map(({ name, available }) => mark(available, `${name} ${available ? "available" : "not set"}`));
   const availableAuth = auth.filter(({ available }) => available).map(({ name }) => name);
+  const deterministic = info.deterministic ?? { scripts: [], signals: [] };
+  const deterministicStatus = deterministic.signals.length > 0
+    ? deterministic.signals.map((s) => `  - ${s}`).join("\n")
+    : "  (no obvious deterministic coverage detected — still ask the user before encoding casts, portability, or namespace rules as Jev checks)";
 
   return `jev-pref setup
 
@@ -171,12 +238,17 @@ readable guidance should change. Use \`npx jev-pref sync\` for that reconciliati
 RUNTIME CONTRACT
 
 \`npx jev-pref review\` collects a git diff and asks Jev to evaluate configured
-conditions or fixed classifications. It applies thresholds and
-outcome maps deterministically. Jev has a 30k-token input limit, including
-state and questions. Prefer reviewing small changes. Use --hunks for file:line
-scopes, --files for one bounded scope per file, and --include/--exclude to narrow
-large changes. Use --json when another program consumes the result. jev-pref
-never treats a truncated partial diff as approval.
+conditions or fixed classifications. It applies thresholds to probability (P)
+only — confidence is informational and never gates — and maps the result via
+gate/advisory thresholds and label outcomes deterministically. Prefs default to
+hunk scope (one Jev call per hunk/file); use scope:"change" for whole-diff
+predicates such as "does this change modify AGENTS.md?" so they evaluate once.
+Jev has a 30k-token input limit, including state and questions. Prefer reviewing
+small changes. Use --hunks for file:line scopes, --files for one bounded scope
+per file, and --include/--exclude to narrow large changes. Use --json when
+another program consumes the result (canonical key: scopes; advisoryCount
+distinguishes advisory-only from clean). jev-pref never treats a truncated
+partial diff as approval.
 
   exit 0   approved, or advisory-only when failOn is "gates"
   exit 1   the configured failure policy was triggered
@@ -192,6 +264,10 @@ ${mark(localConfig.exists && localConfig.valid, localStatus)}
 ${localConfig.exists ? mark(info.localIgnored && !info.localTracked, info.localTracked ? "jev-pref.local.json is tracked; personal policy should normally be untracked" : info.localIgnored ? "jev-pref.local.json is ignored by Git" : "jev-pref.local.json is not ignored by Git") : mark(info.localIgnored, info.localIgnored ? "jev-pref.local.json is covered by Git ignore rules" : "jev-pref.local.json is not covered by Git ignore rules")}
 ${mark(info.workflows.length > 0, workflowStatus)}
 ${info.project.length > 0 ? `Project signals: ${info.project.join(", ")}` : "Project signals: none detected"}
+
+DETERMINISTIC COVERAGE (prefer tooling; do NOT re-encode as Jev checks)
+
+${deterministicStatus}
 
 AUTHENTICATION INSPECTION (presence only; values were not read or printed)
 
@@ -258,6 +334,13 @@ Fewer externally grounded checks are better than translating every preference.
 Use formatters, compilers, tests, linters, scanners, or deterministic CI when
 they can decide the rule reliably.
 
+You are authoring Bernoulli questions, not true/false ones. A condition
+asks Jev to estimate p(true) from visible evidence (Jev native type noul,
+answered {chance: P}); the threshold is the decision boundary on p. Write
+guidance as evidence strength: name the visible fact that moves p ("count
+only catch branches added in this review") rather than restating truth
+conditions.
+
 Shape broad guidance into project-defined truth conditions:
 
   Human:  "Keep things simple."
@@ -283,7 +366,11 @@ Shape broad guidance into project-defined truth conditions:
 Rules for every preference:
 
 - The correct answer comes from a written user/project definition.
-- The evidence needed to answer is present in the supplied review state.
+- The evidence needed to answer is present in the supplied review state:
+  per call Jev sees {prefs (this call's subset), diff, hunk|changed_file|
+  new_file, untracked_files, git_status, diff_stat, context, note} plus the
+  questions. Filenames ARE visible (diff/hunk headers, file/label fields);
+  the rest of the repo is NOT. --dry-run prints this envelope literally.
 - Two reviewers applying the definition should usually agree.
 - Use one concrete yes/no condition, or a fixed user-defined taxonomy.
 - Define inclusions and exclusions in guidance when the boundary needs them.
@@ -295,7 +382,12 @@ FIXED CLASSIFICATIONS
 Prefer a choice when policy depends on which defined category applies. For
 example, classify public API impact as none, additive, behavioral, or breaking.
 The config maps each label to approve, advisory, or fix_now. Jev selects a label
-and reports probabilities/confidence; jev-pref owns the consequence. Do not ask
+and reports probabilities/confidence; jev-pref owns the consequence. Only P
+gates: a label's mapped outcome applies only when that label's P crosses its
+cutoff (fix_now labels: gateThreshold; advisory labels: advisoryThreshold); a
+below-cutoff top label falls through to approve for that scope (still shown
+with its P). Confidence is displayed but never suppresses or applies an
+outcome. Do not ask
 Jev whether the API change is "bad."
 
 POLICY OUTCOMES
@@ -305,6 +397,9 @@ significantly harder, the rule is an actual invariant/boundary, or the user
 consistently wants work to stop. Use an advisory when the externally defined
 condition is worth surfacing but should not stop work. When unsure about policy
 severity, start advisory and calibrate from labeled examples.
+gateThreshold governs gate conditions, secrets, AND fix_now-mapped choice
+labels; advisoryThreshold governs advisory conditions and advisory-mapped
+labels (a fix_now label between the two reports an uncertain-gate note).
 
 INTEGRATION MODES
 
@@ -320,7 +415,7 @@ merge by id: same-id entries override shared rules and new ids append. Other
 local fields override project fields. A minimal shared config is:
 
   {
-    "$schema": "https://raw.githubusercontent.com/doeixd/jev-pref/master/packages/jev-pref/schema.json",
+    "$schema": "https://raw.githubusercontent.com/doeixd/jev-pref/v0.3.0/packages/jev-pref/schema.json",
     "suites": ["prefs", "secrets"],
     "gateThreshold": 0.7,
     "advisoryThreshold": 0.7,
@@ -328,6 +423,7 @@ local fields override project fields. A minimal shared config is:
     "prefs": [
       {
         "id": "no_swallowed_errors",
+        "scope": "hunk",
         "gate": false,
         "question": "Does this change catch an error and continue without returning, logging, transforming, or explicitly ignoring it?",
         "guidance": "Count only catch/error branches added or changed in this review."
@@ -354,8 +450,12 @@ local fields override project fields. A minimal shared config is:
 
 Use snake_case preference and label ids. Condition checks use gate:true only
 when a sufficiently probable true answer should block. Choice checks map every
-label to an outcome. Classification probability controls whether the configured
-outcome applies; policy severity still comes from gate or outcomes. For personal
+label to an outcome. Classification probability (P) controls whether the configured
+outcome applies; confidence is shown but never gates; policy severity still comes
+from gate or outcomes. Use scope:"change" for whole-diff predicates (file adds,
+renames, cross-hunk counts); default scope is "hunk" (per hunk/file). Pin $schema
+to a tagged release (e.g. .../v0.3.0/.../schema.json), not master, so old configs
+validate against what they were written for. For personal
 additions, use the same shape in jev-pref.local.json and add that path to
 .gitignore. Never place personal policy in the shared file without agreement.
 

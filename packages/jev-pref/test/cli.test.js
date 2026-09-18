@@ -29,6 +29,22 @@ describe("cli dispatcher", () => {
     assert.match(r4.logs.join("\n"), /bidirectional/);
   });
 
+  it("documents the evidence envelope, choice cutoffs, and cost model", async () => {
+    const { out, logs } = mockOut();
+    assert.equal(await run(["help", "review"], { out }), 0);
+    const text = logs.join("\n");
+    assert.match(text, /Evidence envelope/);
+    assert.match(text, /Filenames ARE visible/);
+    assert.match(text, /noul/);
+    assert.match(text, /falls through to approve/);
+    assert.match(text, /choice[\s\S]*fix_now|fix_now[\s\S]*choice/);
+    assert.match(text, /Cost model/);
+    const t = mockOut();
+    assert.equal(await run(["help", "tune"], { out: t.out }), 0);
+    assert.match(t.logs.join("\n"), /0\.5.*0\.9/);
+    assert.match(t.logs.join("\n"), /threshold-independent/);
+  });
+
   it("prints the sync protocol", async () => {
     const { out, logs } = mockOut();
     assert.equal(await run(["sync"], { cwd: ".", out }), 0);

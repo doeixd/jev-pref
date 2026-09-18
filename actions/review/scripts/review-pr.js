@@ -113,7 +113,7 @@ function emitOutput(name, value) {
 
 /**
  * Normalize engine verdict shapes: whole-diff ({ outcome, suites, files })
- * and scoped ({ outcome, scopes|hunks: [{ label, suites }], files }). Scoped
+ * and scoped ({ outcome, scopes: [{ label, suites }], files }). Scoped (legacy hunks key still read for old engine output).
  * review aggregates per-suite with labels so comments keep attribution.
  */
 function normalizeVerdict(v) {

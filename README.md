@@ -453,9 +453,23 @@ Policy:   behavioral → advisory
 Result:   advisory
 ```
 
-Classification confidence and policy severity stay separate. An important gate
-does not block unless its probability crosses the configured gate threshold; a
-high-confidence advisory remains non-blocking.
+Write Bernoulli questions, not true/false ones. A condition asks Jev to
+estimate p(true) from visible evidence (Jev native type `noul`, answered
+`{chance: P}`); the threshold is the decision boundary on p. Name the visible
+fact that moves p in `guidance` ("count only ...") rather than restating truth
+conditions.
+
+Classification confidence and policy severity stay separate. Thresholds gate
+on probability (P) only; confidence is displayed (for example
+`P=0.86 confidence=0.73`) but never gates, suppresses, or applies an outcome.
+An important gate does not block unless its probability crosses the configured
+gate threshold; a high-confidence advisory remains non-blocking.
+`gateThreshold` governs gate conditions, secrets, AND `fix_now`-mapped choice
+labels; `advisoryThreshold` governs advisory conditions and advisory-mapped
+labels (a `fix_now` label between the two reports an uncertain-gate note). A
+choice whose top label scores below its outcome's cutoff falls through to
+approve for that scope — no failure, no note, no fallback to the next label —
+while the classification line is still printed.
 
 ### Don't replace deterministic tooling
 
@@ -550,6 +564,24 @@ hunk scopes when necessary, and fails loudly rather than approving truncated or
 incomplete input. Review changes while they are still small, or narrow them
 with `--include` and `--exclude`.
 
+#### What Jev sees per call (the evidence envelope)
+
+Each Jev call receives exactly the serialized `{state, questions}` pair that
+`--dry-run` prints — nothing else. `state` carries the call's pref subset,
+the `diff` body (one hunk/file, or the whole diff for change-scoped and
+whole-diff calls), `hunk {file, label, header}` (`--hunks`), `changed_file`
+(`--files`), or `new_file` (untracked), plus `untracked_files`, `git_status`,
+`diff_stat`, `context`, and a completeness note. Filenames ARE visible via
+diff/hunk headers and the file/label fields; the rest of the repo is NOT.
+Write guidance against that envelope.
+
+#### Cost model
+
+Calls are sequential: one Jev call per hunk/file scope, plus one whole-diff
+call when any pref is `change`-scoped. 10 hunks ~= 10 calls. Prefer `--files`
+for broad reviews (one call per file) and narrow with `--include`/`--exclude`
+before raising `--max-hunks`.
+
 Preview the planned questions and state without a live call:
 
 ```bash
@@ -569,7 +601,10 @@ npx jev-pref sync
 ```
 
 Agent-facing maintenance guidance for reconciling project policy and Jev
-checks after meaningful guidance or configuration changes.
+checks after meaningful guidance or configuration changes. Read-only: it reads
+guidance files, both config layers, and git ignore state, then prints the
+reconciliation protocol (classification, scope check, verify step) for the
+agent to follow. It writes nothing and decides no policy.
 
 ### `jev-pref tune`
 
@@ -577,8 +612,14 @@ checks after meaningful guidance or configuration changes.
 npx jev-pref tune
 ```
 
-Calibrate checks against labeled examples. Condition evals use boolean expected
-values; fixed classifications use expected label strings.
+Calibrate checks against labeled examples in `evals/*.json`, each
+`{name, diff, expected}` with `expected` mapping pref id to `true`/`false`
+(conditions) or a label string (choices). One Jev call per case, then
+`accuracy @ gateThreshold`: conditions compare `(P >= threshold)` vs expected,
+choices compare the selected label vs expected (threshold-independent).
+`--sweep` re-scores the frozen answers over 0.5..0.9 and proposes a
+`gateThreshold` diff (nothing is written); `--check` fails below a bar.
+"Calibrated" means highest accuracy on your labels.
 
 ```bash
 npx jev-pref tune --sweep
@@ -613,7 +654,7 @@ A shared project config might contain a condition and a fixed classification:
 
 ```json
 {
-  "$schema": "https://raw.githubusercontent.com/doeixd/jev-pref/master/packages/jev-pref/schema.json",
+  "$schema": "https://raw.githubusercontent.com/doeixd/jev-pref/v0.3.0/packages/jev-pref/schema.json",
   "suites": ["prefs"],
   "gateThreshold": 0.8,
   "advisoryThreshold": 0.7,
@@ -621,6 +662,7 @@ A shared project config might contain a condition and a fixed classification:
   "prefs": [
     {
       "id": "shared_mutable_state",
+      "scope": "hunk",
       "gate": true,
       "question": "Does this change introduce new mutable state shared across module or application boundaries?",
       "guidance": "Local variables and state scoped to one object instance do not count."
@@ -649,6 +691,15 @@ A shared project config might contain a condition and a fixed classification:
 Legacy `{ "gate", "text" }` conditions remain accepted, but `question` with
 optional `guidance` is the preferred form.
 
+Prefs accept `scope: "hunk"` (default, evaluated per hunk/file scope) or
+`scope: "change"` (evaluated once against the whole diff). Use `change` for
+whole-diff predicates such as "does this change modify AGENTS.md?" so the
+question does not fire on every unrelated hunk.
+
+Condition questions display as `condition` in dry-run output (the Jev wire
+type is `noul`). Pin `$schema` to a tagged release URL, not `master`, so old
+configs validate against what they were written for.
+
 Shared policy lives in `jev-pref.json`. Optional personal additions and same-id
 overrides live in gitignored `jev-pref.local.json`.
 
@@ -657,10 +708,15 @@ overrides live in gitignored `jev-pref.local.json`.
 `jev-pref` reduces evaluator results to three outcomes:
 
 ```text
-approve    no configured check crossed its threshold
-advisory   a non-blocking condition or label was detected
-fix_now    a blocking condition or label was detected
+approve                  no configured check crossed its threshold
+approve with N advisories  clean exit under failOn=gates, but N advisories fired
+advisory (N advisories)    a non-blocking condition or label was detected
+fix_now                  a blocking condition or label was detected
 ```
+
+JSON carries `advisoryCount` alongside `outcome` so scripts can distinguish
+advisory-only passes from clean approvals without parsing text. Scoped JSON
+uses the canonical `scopes` array (no duplicated `hunks` array).
 
 The stable process contract is:
 

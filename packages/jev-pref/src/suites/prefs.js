@@ -8,16 +8,46 @@ function kind(pref) {
   return pref.type ?? "condition";
 }
 
+export function prefScope(pref) {
+  return pref.scope ?? "hunk";
+}
+
+export function partitionPrefs(prefs) {
+  const hunkPrefs = [];
+  const changePrefs = [];
+  for (const p of prefs ?? []) {
+    (prefScope(p) === "change" ? changePrefs : hunkPrefs).push(p);
+  }
+  return { hunkPrefs, changePrefs };
+}
+
+/** Jev wire type "noul" is a condition (chance-based); display it as such. */
+export function displayQuestionType(wireType) {
+  return wireType === "noul" ? "condition" : wireType;
+}
+
 function question(pref) {
   return pref.question ?? pref.text;
 }
 
+export function summarizePreference(pref) {
+  const base = { id: pref.id, kind: kind(pref), scope: prefScope(pref), question: question(pref) };
+  if (kind(pref) === "choice") {
+    base.labels = Object.keys(pref.labels ?? {});
+    base.outcomes = pref.outcomes;
+  } else {
+    base.gate = !!pref.gate;
+  }
+  return base;
+}
+
 export function describePreference(pref) {
+  const scopeSuffix = prefScope(pref) === "change" ? ",change" : "";
   if (kind(pref) === "choice") {
     const mapping = Object.entries(pref.outcomes).map(([label, outcome]) => `${label}->${outcome}`).join(", ");
-    return `${pref.id} [choice: ${mapping}]: ${pref.question}`;
+    return `${pref.id} [choice${scopeSuffix}: ${mapping}]: ${pref.question}`;
   }
-  return `${pref.id} [${pref.gate ? "gate" : "advisory"}]: ${question(pref)}`;
+  return `${pref.id} [${pref.gate ? "gate" : "advisory"}${scopeSuffix}]: ${question(pref)}`;
 }
 
 export function buildQuestions(prefs) {

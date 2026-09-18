@@ -316,6 +316,9 @@ export function validateConfig(config) {
       }
       const type = p?.type ?? "condition";
       if (!["condition", "choice"].includes(type)) errors.push(`prefs[${i}].type must be condition|choice`);
+      if (p?.scope !== undefined && !["hunk", "change"].includes(p.scope)) {
+        errors.push(`prefs[${i}].scope must be hunk|change`);
+      }
       if (p?.guidance !== undefined && (typeof p.guidance !== "string" || p.guidance.length === 0)) {
         errors.push(`prefs[${i}].guidance must be a non-empty string`);
       }

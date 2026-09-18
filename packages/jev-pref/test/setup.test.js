@@ -101,4 +101,19 @@ describe("setup bootstrap protocol", () => {
     assert.equal(await setup({ positional: ["extra"], flags: {} }, { out }), 2);
     assert.match(errors.join("\n"), /takes no arguments/);
   });
+
+  it("surfaces deterministic coverage as NOT FOR JEV", async () => {
+    const dir = await mkdtemp(join(tmpdir(), "jev-setup-"));
+    try {
+      await writeFile(join(dir, "package.json"), JSON.stringify({ scripts: { test: "node --test", "lint:portability": "eslint ." } }));
+      await writeFile(join(dir, "Casts.test.ts"), "test\n");
+      const info = inspectRepository(dir);
+      assert.ok(info.deterministic.signals.some((s) => /NOT FOR JEV/.test(s)));
+      assert.ok(info.deterministic.signals.some((s) => /portability/i.test(s)));
+      const text = renderSetup(info);
+      assert.match(text, /DETERMINISTIC COVERAGE/);
+    } finally {
+      await rm(dir, { recursive: true, force: true });
+    }
+  });
 });

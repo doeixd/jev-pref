@@ -3,32 +3,140 @@
   "title": "jev-pref project-defined semantic checks",
   "type": "object",
   "properties": {
-    "suites": { "type": "array", "items": { "type": "string" }, "default": ["prefs"] },
-    "gateThreshold": { "type": "number", "minimum": 0, "maximum": 1, "default": 0.7 },
-    "advisoryThreshold": { "type": "number", "minimum": 0, "maximum": 1, "default": 0.7 },
-    "failOn": { "type": "string", "enum": ["gates", "all", "never"], "default": "gates" },
-    "timeoutMs": { "type": "integer", "minimum": 1, "default": 60000 },
-    "maxDiffChars": { "type": "integer", "minimum": 1, "default": 20000, "description": "Maximum diff characters per Jev request; keep conservative for Jev's 30k-token total input limit." },
-    "hunks": { "type": "boolean", "default": false },
-    "files": { "type": "boolean", "default": false },
-    "maxHunks": { "type": "integer", "minimum": 1, "default": 10 },
-    "include": { "type": "array", "items": { "type": "string" }, "default": [] },
-    "exclude": { "type": "array", "items": { "type": "string" }, "default": [] },
+    "suites": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      },
+      "default": [
+        "prefs"
+      ]
+    },
+    "gateThreshold": {
+      "type": "number",
+      "minimum": 0,
+      "maximum": 1,
+      "default": 0.7,
+      "description": "P cutoff for gate conditions, secrets, AND choice labels mapped to fix_now. Thresholds gate on probability (P) only; confidence is informational."
+    },
+    "advisoryThreshold": {
+      "type": "number",
+      "minimum": 0,
+      "maximum": 1,
+      "default": 0.7,
+      "description": "P cutoff for advisory conditions and advisory-mapped choice labels. A fix_now-mapped label with P between the two cutoffs reports as an uncertain-gate note."
+    },
+    "failOn": {
+      "type": "string",
+      "enum": [
+        "gates",
+        "all",
+        "never"
+      ],
+      "default": "gates"
+    },
+    "timeoutMs": {
+      "type": "integer",
+      "minimum": 1,
+      "default": 60000
+    },
+    "maxDiffChars": {
+      "type": "integer",
+      "minimum": 1,
+      "default": 20000,
+      "description": "Maximum diff characters per Jev request; keep conservative for Jev's 30k-token total input limit."
+    },
+    "hunks": {
+      "type": "boolean",
+      "default": false
+    },
+    "files": {
+      "type": "boolean",
+      "default": false
+    },
+    "maxHunks": {
+      "type": "integer",
+      "minimum": 1,
+      "default": 10
+    },
+    "include": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      },
+      "default": []
+    },
+    "exclude": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      },
+      "default": []
+    },
     "agent": {
-      "type": ["object", "null"],
+      "type": [
+        "object",
+        "null"
+      ],
       "default": null,
       "properties": {
-        "command": { "type": "array", "items": { "type": "string" }, "minItems": 1 },
-        "input": { "type": "string", "enum": ["json", "text", "none"], "default": "json" },
-        "on": { "type": "array", "items": { "type": "string", "enum": ["fix_now", "advisory", "approve"] }, "default": ["fix_now"] },
-        "timeoutMs": { "type": "integer", "minimum": 1, "default": 300000 }
+        "command": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "minItems": 1
+        },
+        "input": {
+          "type": "string",
+          "enum": [
+            "json",
+            "text",
+            "none"
+          ],
+          "default": "json"
+        },
+        "on": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "enum": [
+              "fix_now",
+              "advisory",
+              "approve"
+            ]
+          },
+          "default": [
+            "fix_now"
+          ]
+        },
+        "timeoutMs": {
+          "type": "integer",
+          "minimum": 1,
+          "default": 300000
+        }
       },
-      "required": ["command"]
+      "required": [
+        "command"
+      ]
     },
-    "model": { "type": "string" },
-    "baseUrl": { "type": "string" },
-    "provider": { "type": "string", "enum": ["typesafe", "vercel"] },
-    "zeroDataRetention": { "type": "boolean", "default": false },
+    "model": {
+      "type": "string"
+    },
+    "baseUrl": {
+      "type": "string"
+    },
+    "provider": {
+      "type": "string",
+      "enum": [
+        "typesafe",
+        "vercel"
+      ]
+    },
+    "zeroDataRetention": {
+      "type": "boolean",
+      "default": false
+    },
     "prefs": {
       "type": "array",
       "default": [],
@@ -36,36 +144,115 @@
         "oneOf": [
           {
             "type": "object",
-            "required": ["id", "gate"],
+            "required": [
+              "id",
+              "gate"
+            ],
             "properties": {
-              "id": { "type": "string", "pattern": "^[a-z0-9]+(_[a-z0-9]+)*$" },
-              "type": { "const": "condition" },
-              "gate": { "type": "boolean" },
-              "question": { "type": "string", "minLength": 1 },
-              "guidance": { "type": "string", "minLength": 1 },
-              "text": { "type": "string", "minLength": 1, "description": "Legacy condition wording; prefer question." }
+              "id": {
+                "type": "string",
+                "pattern": "^[a-z0-9]+(_[a-z0-9]+)*$"
+              },
+              "type": {
+                "const": "condition",
+                "description": "Config language for Jev native type noul (p(true) estimation)."
+              },
+              "scope": {
+                "type": "string",
+                "enum": [
+                  "hunk",
+                  "change"
+                ],
+                "default": "hunk",
+                "description": "hunk evaluates per hunk/file scope; change evaluates once against the whole diff."
+              },
+              "gate": {
+                "type": "boolean"
+              },
+              "question": {
+                "type": "string",
+                "minLength": 1
+              },
+              "guidance": {
+                "type": "string",
+                "minLength": 1
+              },
+              "text": {
+                "type": "string",
+                "minLength": 1,
+                "description": "Legacy condition wording; prefer question."
+              }
             },
-            "anyOf": [{ "required": ["question"] }, { "required": ["text"] }]
+            "anyOf": [
+              {
+                "required": [
+                  "question"
+                ]
+              },
+              {
+                "required": [
+                  "text"
+                ]
+              }
+            ],
+            "description": "Bernoulli question: Jev estimates p(true) from the visible review input (sent as Jev native type noul, answered {chance: P}); gate/advisoryThreshold is the decision boundary on P. Name the visible evidence that moves p in guidance."
           },
           {
             "type": "object",
-            "required": ["id", "type", "question", "labels", "outcomes"],
+            "required": [
+              "id",
+              "type",
+              "question",
+              "labels",
+              "outcomes"
+            ],
             "properties": {
-              "id": { "type": "string", "pattern": "^[a-z0-9]+(_[a-z0-9]+)*$" },
-              "type": { "const": "choice" },
-              "question": { "type": "string", "minLength": 1 },
-              "guidance": { "type": "string", "minLength": 1 },
+              "id": {
+                "type": "string",
+                "pattern": "^[a-z0-9]+(_[a-z0-9]+)*$"
+              },
+              "type": {
+                "const": "choice"
+              },
+              "scope": {
+                "type": "string",
+                "enum": [
+                  "hunk",
+                  "change"
+                ],
+                "default": "hunk",
+                "description": "hunk evaluates per hunk/file scope; change evaluates once against the whole diff."
+              },
+              "question": {
+                "type": "string",
+                "minLength": 1
+              },
+              "guidance": {
+                "type": "string",
+                "minLength": 1
+              },
               "labels": {
                 "type": "object",
                 "minProperties": 2,
                 "maxProperties": 255,
-                "additionalProperties": { "type": "string", "minLength": 1 }
+                "additionalProperties": {
+                  "type": "string",
+                  "minLength": 1
+                }
               },
               "outcomes": {
                 "type": "object",
-                "additionalProperties": { "type": "string", "enum": ["approve", "advisory", "fix_now"] }
+                "additionalProperties": {
+                  "type": "string",
+                  "enum": [
+                    "approve",
+                    "advisory",
+                    "fix_now"
+                  ]
+                }
               }
-            }
+            },
+            "description": "Fixed-label classification: Jev selects one label (answered {choice, probabilities, confidence}). Each label's mapped outcome applies only when that label's P crosses its outcome cutoff (fix_now labels: gateThreshold; advisory labels: advisoryThreshold); a below-cutoff top label falls through to approve for that scope. Confidence is shown but never gates."
           }
         ]
       }

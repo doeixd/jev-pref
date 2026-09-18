@@ -60,6 +60,37 @@ describe("review request budgeting", () => {
       assert.ok(preview.scopes.length > 2);
       assert.ok(preview.scopes.every((scope) => scope.state.diff.length <= 120));
       assert.ok(preview.scopes.some((scope) => scope.label.includes("part")));
+      // Slim dry-run: pref list once, scopes carry ids + budget, no noul leak.
+      assert.ok(Array.isArray(preview.prefs) && preview.prefs.length === 1);
+      assert.deepEqual(preview.scopes[0].prefIds, ["focused"]);
+      assert.equal(preview.budget.tokenLimit, 30000);
+      assert.equal(preview.budget.fits, true);
+      assert.ok(!JSON.stringify(preview.questions).includes('"noul"'));
+    } finally {
+      await rm(dir, { recursive: true, force: true });
+    }
+  });
+
+  it("evaluates change-scoped prefs once against the whole diff", async () => {
+    const dir = await fixture();
+    try {
+      await writeFile(join(dir, "jev-pref.json"), JSON.stringify({
+        suites: ["prefs"],
+        prefs: [
+          { id: "whole_thing", scope: "change", gate: false, text: "Does this change touch many files?" },
+          { id: "hunk_thing", scope: "hunk", gate: false, text: "Does this hunk do X?" },
+        ],
+      }));
+      const { out, logs } = mockOut();
+      const code = await review({
+        flags: { "dry-run": true, hunks: true, "max-hunks": "20" },
+      }, { cwd: dir, out });
+      assert.equal(code, 0);
+      const preview = JSON.parse(logs.at(-1));
+      assert.deepEqual(preview.prefs.map((p) => p.id).sort(), ["hunk_thing", "whole_thing"]);
+      assert.ok(preview.scopes.every((scope) => scope.prefIds && !scope.prefIds.includes("whole_thing")));
+      assert.deepEqual(preview.change.prefIds, ["whole_thing"]);
+      assert.ok(preview.change.state.diff.length > preview.scopes[0].state.diff.length);
     } finally {
       await rm(dir, { recursive: true, force: true });
     }

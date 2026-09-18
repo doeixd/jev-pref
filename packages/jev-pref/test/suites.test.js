@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
-import { buildQuestions, judge } from "../src/suites/prefs.js";
+import { buildQuestions, displayQuestionType, judge, partitionPrefs, summarizePreference } from "../src/suites/prefs.js";
 import { buildQuestions as buildSecrets, judge as judgeSecrets } from "../src/suites/secrets.js";
 
 const prefs = [
@@ -80,6 +80,45 @@ describe("prefs suite", () => {
     }, cfg);
     assert.equal(v.outcome, "advisory");
     assert.match(v.notes[0], /uncertain gate/);
+  });
+
+  it("partitions hunk vs change scope with hunk default", () => {
+    const { hunkPrefs, changePrefs } = partitionPrefs([
+      { id: "a_one", scope: "change" },
+      { id: "b_two" },
+      { id: "c_three", scope: "hunk" },
+    ]);
+    assert.deepEqual(hunkPrefs.map((p) => p.id), ["b_two", "c_three"]);
+    assert.deepEqual(changePrefs.map((p) => p.id), ["a_one"]);
+    assert.equal(summarizePreference({ id: "a_one", scope: "change", gate: false, question: "Q?" }).scope, "change");
+  });
+
+  it("maps wire noul to display condition", () => {
+    assert.equal(displayQuestionType("noul"), "condition");
+    assert.equal(displayQuestionType("choice"), "choice");
+    const q = buildQuestions([{ id: "c_one", gate: false, text: "Q?" }]);
+    assert.equal(q.pref_c_one.type, "noul");
+  });
+
+  it("falls through to approve when the top choice label scores below cutoff", () => {
+    const choices = [{
+      id: "api_change",
+      type: "choice",
+      question: "Classify the public API impact.",
+      labels: { none: "No change", breaking: "Incompatible" },
+      outcomes: { none: "approve", breaking: "fix_now" },
+    }];
+    const v = judge(choices, {
+      pref_api_change: {
+        choice: "breaking",
+        confidence: 0.9,
+        probabilities: { none: 0.6, breaking: 0.4 },
+      },
+    }, cfg);
+    assert.equal(v.outcome, "approve");
+    assert.deepEqual(v.failures, []);
+    assert.deepEqual(v.notes, []);
+    assert.equal(v.classifications[0].label, "breaking");
   });
 });
 

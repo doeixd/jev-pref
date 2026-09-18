@@ -45,6 +45,7 @@ YOUR TASK
    - Jev preferences that are stale or no longer supported by guidance
    - rules whose meaning was weakened, strengthened, added, or removed
    - gate/advisory classifications that no longer match intent
+   - hunk-scoped prefs asking whole-diff questions (use scope:change) and vice versa
    - duplicate, contradictory, or overly broad preferences
    - checks that ask Jev to invent what good, simple, clean, idiomatic, safe,
      adequate, or well-designed means
@@ -63,7 +64,7 @@ For every Jev preference, ask:
 
 1. Is the correct answer externally defined by the user or project?
 2. Is the required evidence available in the review input?
-3. Is it a concrete yes/no condition or a fixed user-defined taxonomy?
+3. Is it a Bernoulli question (visible evidence moving p(true), decided by a threshold) or a fixed user-defined taxonomy?
 4. Would two reviewers applying the written definition usually agree?
 5. Would deterministic tooling enforce it better?
 
