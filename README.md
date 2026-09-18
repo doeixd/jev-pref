@@ -1,5 +1,7 @@
 # jev-pref
 
+<video src="https://raw.githubusercontent.com/doeixd/jev-pref/master/explainer/media/jev-pref-explainer-revised-fast.mp4" controls muted playsinline width="100%"></video>
+
 **Turn your preferences from AGENTS.md into a fast, Jev-powered AI linter.**
 
 `jev-pref` lets you define project-specific semantic rules, run them against
